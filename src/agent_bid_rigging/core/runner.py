@@ -9,11 +9,15 @@ from agent_bid_rigging.core.artifacts import (
     build_case_manifest,
     build_document_catalog,
     build_duplicate_detection_table,
+    build_evidence_grade_table,
     build_entity_field_table,
     build_extracted_file_index,
     build_file_fingerprint_table,
+    build_formal_report,
+    build_formal_report_markdown,
     build_price_analysis_table,
     build_review_conclusion_table,
+    build_risk_score_table,
     build_source_file_index,
     build_structure_similarity_table,
     build_shared_error_table,
@@ -79,6 +83,23 @@ def run_review(
     license_match_table = build_license_match_table(bid_signals)
     timeline_table = build_timeline_table(bid_signals)
     review_conclusion_table = build_review_conclusion_table(assessments)
+    evidence_grade_table = build_evidence_grade_table(assessments)
+    risk_score_table = build_risk_score_table(
+        assessments=assessments,
+        structure_similarity_table=structure_similarity_table,
+        duplicate_detection_table=duplicate_detection_table,
+        text_similarity_table=text_similarity_table,
+        authorization_chain_table=authorization_chain_table,
+        timeline_table=timeline_table,
+    )
+    formal_report = build_formal_report(
+        case_manifest=case_manifest,
+        document_catalog=document_catalog,
+        review_conclusion_table=review_conclusion_table,
+        evidence_grade_table=evidence_grade_table,
+        risk_score_table=risk_score_table,
+    )
+    formal_report_markdown = build_formal_report_markdown(formal_report)
 
     report = {
         "run_name": run_name,
@@ -101,7 +122,10 @@ def run_review(
         "authorization_chain_table": authorization_chain_table,
         "license_match_table": license_match_table,
         "timeline_table": timeline_table,
+        "evidence_grade_table": evidence_grade_table,
+        "risk_score_table": risk_score_table,
         "review_conclusion_table": review_conclusion_table,
+        "formal_report": formal_report,
     }
     opinion = generate_review_opinion(report, opinion_mode=opinion_mode)
 
@@ -120,9 +144,13 @@ def run_review(
     _write_json(base_dir / "authorization_chain_table.json", {"rows": authorization_chain_table})
     _write_json(base_dir / "license_match_table.json", {"rows": license_match_table})
     _write_json(base_dir / "timeline_table.json", {"rows": timeline_table})
+    _write_json(base_dir / "evidence_grade_table.json", {"rows": evidence_grade_table})
+    _write_json(base_dir / "risk_score_table.json", {"rows": risk_score_table})
     _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
+    _write_json(base_dir / "formal_report.json", formal_report)
     _write_json(base_dir / "pairwise_report.json", report)
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
+    (base_dir / "formal_report.md").write_text(formal_report_markdown, encoding="utf-8")
     _write_json(base_dir / "opinion.json", opinion)
     (base_dir / "opinion.md").write_text(opinion["document"], encoding="utf-8")
     return report

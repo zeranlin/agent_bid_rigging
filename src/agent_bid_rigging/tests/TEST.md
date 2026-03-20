@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 10 unit tests planned
+- `test_core.py`: 11 unit tests planned
 - `test_full_e2e.py`: 3 end-to-end tests planned
 
 ## Unit Test Plan
@@ -26,8 +26,8 @@
   - expected tests: 1
 - `core/artifacts.py`
   - classify known document types and support structured artifact generation
-  - edge cases: unknown vs known document labels, duplicate hash detection
-  - expected tests: 2
+  - edge cases: unknown vs known document labels, duplicate hash detection, evidence grading and final report rendering
+  - expected tests: 3
 
 ## E2E Test Plan
 

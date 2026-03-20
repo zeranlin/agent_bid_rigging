@@ -7,7 +7,14 @@ from pathlib import Path
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
-from agent_bid_rigging.core.artifacts import build_duplicate_detection_table, classify_document
+from agent_bid_rigging.core.artifacts import (
+    build_duplicate_detection_table,
+    build_evidence_grade_table,
+    build_formal_report,
+    build_formal_report_markdown,
+    build_risk_score_table,
+    classify_document,
+)
 from agent_bid_rigging.utils.file_loader import load_document
 
 
@@ -173,6 +180,37 @@ def test_duplicate_detection_table_marks_same_component_hash() -> None:
     table = build_duplicate_detection_table([left, right])
     assert table[0]["duplicate_count"] == 1
     assert table[0]["classification"] == "完全一致"
+
+
+def test_evidence_grading_and_formal_report() -> None:
+    assessment = assess_pairs(
+        [
+            extract_signals(load_document_from_text("alpha", "bid", "联系人电话：13800000000\n投标报价：100000")),
+            extract_signals(load_document_from_text("beta", "bid", "联系人电话：13800000000\n投标报价：100000")),
+        ]
+    )[0]
+    evidence = build_evidence_grade_table([assessment])
+    assert evidence
+    risk = build_risk_score_table([assessment], [], [], [], [], [])
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-1",
+            "generated_at": "2026-03-20T20:30:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+        },
+        document_catalog=[],
+        review_conclusion_table={
+            "verified_facts": ["alpha 与 beta：联系人电话重合。"],
+            "suspicious_clues": ["alpha 与 beta 存在 high 风险线索。"],
+            "exclusionary_factors": [],
+            "recommendations": ["补充核查。"],
+        },
+        evidence_grade_table=evidence,
+        risk_score_table=risk,
+    )
+    markdown = build_formal_report_markdown(report)
+    assert "正式审查报告" in markdown
+    assert report["preliminary_conclusion"]
 
 
 def load_document_from_text(name: str, role: str, text: str):

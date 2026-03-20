@@ -200,6 +200,149 @@ def build_review_conclusion_table(assessments: list[PairwiseAssessment]) -> dict
     }
 
 
+def build_evidence_grade_table(assessments: list[PairwiseAssessment]) -> list[dict]:
+    rows: list[dict] = []
+    for assessment in assessments:
+        pair_label = f"{assessment.supplier_a} 与 {assessment.supplier_b}"
+        for finding in assessment.findings:
+            rows.append(
+                {
+                    "pair": pair_label,
+                    "finding_title": finding.title,
+                    "evidence_grade": _evidence_grade(finding),
+                    "reason": _evidence_reason(finding),
+                    "evidence": finding.evidence,
+                }
+            )
+    return rows
+
+
+def build_risk_score_table(
+    assessments: list[PairwiseAssessment],
+    structure_similarity_table: list[dict],
+    duplicate_detection_table: list[dict],
+    text_similarity_table: list[dict],
+    authorization_chain_table: list[dict],
+    timeline_table: list[dict],
+) -> list[dict]:
+    structure_map = {(row["supplier_a"], row["supplier_b"]): row for row in structure_similarity_table}
+    duplicate_map = {(row["supplier_a"], row["supplier_b"]): row for row in duplicate_detection_table}
+    text_map = {(row["supplier_a"], row["supplier_b"]): row for row in text_similarity_table}
+    timeline_map = {row["supplier"]: row for row in timeline_table}
+    auth_map = {row["supplier"]: row for row in authorization_chain_table}
+
+    rows: list[dict] = []
+    for assessment in assessments:
+        key = (assessment.supplier_a, assessment.supplier_b)
+        structure_row = structure_map.get(key, {})
+        duplicate_row = duplicate_map.get(key, {})
+        text_row = text_map.get(key, {})
+
+        file_homology = min(30, duplicate_row.get("duplicate_count", 0) * 15)
+        pricing = _pricing_score(assessment)
+        entity = _entity_score(assessment)
+        text_score = _text_similarity_score(text_row, assessment)
+        authorization = _authorization_score(auth_map.get(assessment.supplier_a, {}), auth_map.get(assessment.supplier_b, {}))
+        timeline = _timeline_score(timeline_map.get(assessment.supplier_a, {}), timeline_map.get(assessment.supplier_b, {}))
+        total = file_homology + pricing + entity + text_score + authorization + timeline
+
+        rows.append(
+            {
+                "supplier_a": assessment.supplier_a,
+                "supplier_b": assessment.supplier_b,
+                "file_homology_score": file_homology,
+                "pricing_score": pricing,
+                "technical_text_score": text_score,
+                "entity_link_score": entity,
+                "authorization_score": authorization,
+                "timeline_score": timeline,
+                "total_score": total,
+                "risk_level": _risk_level_from_total(total),
+                "explanation": f"结构相似度={structure_row.get('category_overlap_ratio', 0)}, 文本相似度={text_row.get('full_text_similarity', 0)}",
+            }
+        )
+    return rows
+
+
+def build_formal_report(
+    case_manifest: dict,
+    document_catalog: list[dict],
+    review_conclusion_table: dict,
+    evidence_grade_table: list[dict],
+    risk_score_table: list[dict],
+) -> dict:
+    top_pair = max(risk_score_table, key=lambda item: item["total_score"], default=None)
+    report = {
+        "project_basic_info": {
+            "case_id": case_manifest["case_id"],
+            "generated_at": case_manifest["generated_at"],
+            "supplier_names": case_manifest["input_summary"]["supplier_names"],
+        },
+        "review_scope": {
+            "tender_count": case_manifest["input_summary"]["tender_count"],
+            "bid_count": case_manifest["input_summary"]["bid_count"],
+            "document_catalog_count": len(document_catalog),
+        },
+        "review_method": [
+            "文件接收与建档",
+            "文本与元数据抽取",
+            "结构与同源性比对",
+            "报价、主体、授权与时间线分析",
+            "证据分级与风险评分",
+        ],
+        "review_findings": review_conclusion_table["verified_facts"],
+        "suspicious_clues": review_conclusion_table["suspicious_clues"],
+        "exclusionary_factors": review_conclusion_table["exclusionary_factors"],
+        "preliminary_conclusion": _final_conclusion(top_pair),
+        "follow_up_recommendations": review_conclusion_table["recommendations"],
+        "evidence_summary": evidence_grade_table,
+        "risk_summary": risk_score_table,
+    }
+    return report
+
+
+def build_formal_report_markdown(report: dict) -> str:
+    lines = [
+        "# 正式审查报告",
+        "",
+        "## 1. 项目基本信息",
+        "",
+        f"- 案件编号：{report['project_basic_info']['case_id']}",
+        f"- 生成时间：{report['project_basic_info']['generated_at']}",
+        f"- 投标人：{'、'.join(report['project_basic_info']['supplier_names'])}",
+        "",
+        "## 2. 审查范围",
+        "",
+        f"- 招标文件数量：{report['review_scope']['tender_count']}",
+        f"- 投标文件数量：{report['review_scope']['bid_count']}",
+        f"- 已编目文档数量：{report['review_scope']['document_catalog_count']}",
+        "",
+        "## 3. 审查方法",
+        "",
+    ]
+    for item in report["review_method"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "## 4. 审查发现", ""])
+    for item in report["review_findings"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "## 5. 可疑线索", ""])
+    for item in report["suspicious_clues"] or ["- 未发现明显可疑线索。"]:
+        if item.startswith("- "):
+            lines.append(item)
+        else:
+            lines.append(f"- {item}")
+    lines.extend(["", "## 6. 排除性因素", ""])
+    for item in report["exclusionary_factors"] or ["- 暂无明确排除性因素。"]:
+        if item.startswith("- "):
+            lines.append(item)
+        else:
+            lines.append(f"- {item}")
+    lines.extend(["", "## 7. 初步结论", "", report["preliminary_conclusion"], "", "## 8. 后续建议", ""])
+    for item in report["follow_up_recommendations"]:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
 def build_structure_similarity_table(signals: list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
     for left, right in combinations(signals, 2):
@@ -494,3 +637,92 @@ def _extract_named_values(text: str, field_names: tuple[str, ...]) -> list[str]:
         pattern = re.compile(rf"{re.escape(field_name)}\s*[:：]?\s*([^\n]{{2,120}})")
         values.extend(match.strip() for match in pattern.findall(text))
     return values[:20]
+
+
+def _evidence_grade(finding) -> str:
+    if finding.title in {"银行账号重合", "联系人电话重合", "邮箱重合", "法定代表人信息重合"}:
+        return "A"
+    if "报价" in finding.title or "共享" in finding.title:
+        return "B"
+    if "文本重合" in finding.title:
+        return "C"
+    return "D"
+
+
+def _evidence_reason(finding) -> str:
+    grade = _evidence_grade(finding)
+    return {
+        "A": "高价值直接关联字段或强同源证据。",
+        "B": "较强异常线索，需要结合其他证据判断。",
+        "C": "辅助性文本或结构线索，不能单独定性。",
+        "D": "背景信息或低强度信息。",
+    }[grade]
+
+
+def _pricing_score(assessment: PairwiseAssessment) -> int:
+    for finding in assessment.findings:
+        if finding.title == "投标报价完全一致":
+            return 25
+        if finding.title == "投标报价极度接近":
+            return 18
+        if finding.title == "投标报价较为接近":
+            return 10
+    return 0
+
+
+def _entity_score(assessment: PairwiseAssessment) -> int:
+    score = 0
+    for finding in assessment.findings:
+        if finding.title in {"联系人电话重合", "邮箱重合", "银行账号重合", "法定代表人信息重合", "地址信息重合"}:
+            score += min(10, finding.weight)
+    return min(30, score)
+
+
+def _text_similarity_score(text_row: dict, assessment: PairwiseAssessment) -> int:
+    similarity = text_row.get("full_text_similarity", 0)
+    if any("文本重合" in finding.title for finding in assessment.findings):
+        if similarity >= 0.8:
+            return 18
+        if similarity >= 0.5:
+            return 12
+        return 8
+    return 0
+
+
+def _authorization_score(left: dict, right: dict) -> int:
+    left_auth = set(left.get("manufacturer_mentions", []))
+    right_auth = set(right.get("manufacturer_mentions", []))
+    overlap = left_auth & right_auth
+    if overlap:
+        return 10
+    return 0
+
+
+def _timeline_score(left: dict, right: dict) -> int:
+    left_times = set(left.get("modified_times", []))
+    right_times = set(right.get("modified_times", []))
+    if left_times and right_times and left_times & right_times:
+        return 8
+    return 0
+
+
+def _risk_level_from_total(total: int) -> str:
+    if total >= 75:
+        return "critical"
+    if total >= 45:
+        return "high"
+    if total >= 20:
+        return "medium"
+    return "low"
+
+
+def _final_conclusion(top_pair: dict | None) -> str:
+    if not top_pair:
+        return "现有证据不足以形成实质性审查判断。"
+    if top_pair["risk_level"] == "critical":
+        return f"存在较强可疑线索，建议对 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 进一步取证。"
+    if top_pair["risk_level"] == "high":
+        return f"存在较强可疑线索，建议重点复核 {top_pair['supplier_a']} 与 {top_pair['supplier_b']}。"
+    if top_pair["risk_level"] == "medium":
+        return f"存在可疑线索，建议对 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 补充核查。"
+    return "未发现明显异常。"

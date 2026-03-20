@@ -72,7 +72,11 @@ class TestCLIEndToEnd:
         assert (out_dir / "authorization_chain_table.json").exists()
         assert (out_dir / "license_match_table.json").exists()
         assert (out_dir / "timeline_table.json").exists()
+        assert (out_dir / "evidence_grade_table.json").exists()
+        assert (out_dir / "risk_score_table.json").exists()
         assert (out_dir / "review_conclusion_table.json").exists()
+        assert (out_dir / "formal_report.json").exists()
+        assert (out_dir / "formal_report.md").exists()
         assert (out_dir / "pairwise_report.json").exists()
         assert (out_dir / "summary.md").exists()
         assert (out_dir / "opinion.json").exists()
@@ -83,6 +87,8 @@ class TestCLIEndToEnd:
         assert any(row["field_name"] == "bid_amounts" for row in entity_table["rows"])
         structure_table = json.loads((out_dir / "structure_similarity_table.json").read_text(encoding="utf-8"))
         assert len(structure_table["rows"]) == 3
+        risk_table = json.loads((out_dir / "risk_score_table.json").read_text(encoding="utf-8"))
+        assert risk_table["rows"]
 
     def test_analyze_accepts_zip_archives(self, tmp_path: Path) -> None:
         tender_dir = tmp_path / "tender_dir"
@@ -137,3 +143,4 @@ class TestCLIEndToEnd:
         assert (out_dir / "summary.md").exists()
         assert (out_dir / "case_manifest.json").exists()
         assert (out_dir / "text_similarity_table.json").exists()
+        assert (out_dir / "formal_report.md").exists()

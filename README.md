@@ -78,7 +78,11 @@ The command creates a timestamped directory under `runs/` containing:
 - `authorization_chain_table.json`
 - `license_match_table.json`
 - `timeline_table.json`
+- `evidence_grade_table.json`
+- `risk_score_table.json`
 - `review_conclusion_table.json`
+- `formal_report.json`
+- `formal_report.md`
 - `normalized/*.json`
 - `pairwise_report.json`
 - `summary.md`
