@@ -98,6 +98,12 @@ def run_review(
         review_conclusion_table=review_conclusion_table,
         evidence_grade_table=evidence_grade_table,
         risk_score_table=risk_score_table,
+        tender_document=tender_doc.to_dict(),
+        bid_documents=[signal.to_dict() for signal in bid_signals],
+        price_analysis_table=price_analysis_table,
+        structure_similarity_table=structure_similarity_table,
+        authorization_chain_table=authorization_chain_table,
+        timeline_table=timeline_table,
     )
     formal_report_markdown = build_formal_report_markdown(formal_report)
 

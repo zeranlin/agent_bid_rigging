@@ -90,8 +90,9 @@ class TestCLIEndToEnd:
         risk_table = json.loads((out_dir / "risk_score_table.json").read_text(encoding="utf-8"))
         assert risk_table["rows"]
         formal_report = (out_dir / "formal_report.md").read_text(encoding="utf-8")
-        assert "审查事实表" in formal_report
-        assert "风险评分表" in formal_report
+        assert "围串标审查意见书" in formal_report
+        assert "审查情况" in formal_report
+        assert "初步审查结论" in formal_report
 
     def test_analyze_accepts_zip_archives(self, tmp_path: Path) -> None:
         tender_dir = tmp_path / "tender_dir"

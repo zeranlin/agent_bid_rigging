@@ -284,9 +284,26 @@ def build_formal_report(
     review_conclusion_table: dict,
     evidence_grade_table: list[dict],
     risk_score_table: list[dict],
+    tender_document: dict | None = None,
+    bid_documents: list[dict] | None = None,
+    price_analysis_table: list[dict] | None = None,
+    structure_similarity_table: list[dict] | None = None,
+    authorization_chain_table: list[dict] | None = None,
+    timeline_table: list[dict] | None = None,
 ) -> dict:
     top_pair = max(risk_score_table, key=lambda item: item["total_score"], default=None)
     source_paths = case_manifest.get("source_paths", {})
+    tender_metadata = _extract_tender_metadata((tender_document or {}).get("text", ""))
+    supplier_profiles = _build_supplier_profiles(
+        bid_documents or [],
+        price_analysis_table or [],
+        authorization_chain_table or [],
+        timeline_table or [],
+    )
+    structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table)
+    suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table)
+    exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table)
+    further_checks = _build_further_checks(top_pair)
     evidence_summary = evidence_grade_table[:12]
     fact_table = [
         {"序号": index, "事实内容": item, "性质": "已识别事实"}
@@ -323,6 +340,10 @@ def build_formal_report(
             "case_id": case_manifest["case_id"],
             "generated_at": case_manifest["generated_at"],
             "supplier_names": case_manifest["input_summary"]["supplier_names"],
+            "project_name": tender_metadata["project_name"],
+            "project_id": tender_metadata["project_id"],
+            "purchaser": tender_metadata["purchaser"],
+            "agency": tender_metadata["agency"],
         },
         "review_scope": {
             "tender_count": case_manifest["input_summary"]["tender_count"],
@@ -345,6 +366,34 @@ def build_formal_report(
             "以自动抽取的结构化字段、文档分类、文本比对和风险评分结果为辅助审查依据。",
             "自动化结果仅作为审查线索，不直接替代行政认定或法律结论。",
         ],
+        "review_object_profiles": supplier_profiles,
+        "review_sections": [
+            {
+                "title": "报价情况比对",
+                "points": _build_price_points(supplier_profiles),
+                "opinion": _build_price_opinion(supplier_profiles),
+            },
+            {
+                "title": "投标文件结构与文本内容比对",
+                "points": structure_summary["points"],
+                "opinion": structure_summary["opinion"],
+            },
+            {
+                "title": "企业身份信息、联系人及人员信息比对",
+                "points": _build_identity_points(supplier_profiles),
+                "opinion": _build_identity_opinion(risk_score_table),
+            },
+            {
+                "title": "授权及资格材料比对",
+                "points": _build_authorization_points(supplier_profiles),
+                "opinion": _build_authorization_opinion(supplier_profiles),
+            },
+            {
+                "title": "文件生成特征及时间比对",
+                "points": _build_timeline_points(supplier_profiles),
+                "opinion": _build_timeline_opinion(supplier_profiles),
+            },
+        ],
         "review_findings": review_conclusion_table["verified_facts"],
         "suspicious_clues": review_conclusion_table["suspicious_clues"],
         "exclusionary_factors": review_conclusion_table["exclusionary_factors"],
@@ -354,6 +403,9 @@ def build_formal_report(
         "risk_table": risk_table,
         "preliminary_conclusion": _final_conclusion(top_pair),
         "follow_up_recommendations": review_conclusion_table["recommendations"],
+        "suspicious_points": suspicious_points,
+        "exclusion_points": exclusion_points,
+        "further_checks": further_checks,
         "audit_opinion": {
             "opinion_type": "自动审查意见",
             "main_statement": _final_conclusion(top_pair),
@@ -366,88 +418,299 @@ def build_formal_report(
 
 
 def build_formal_report_markdown(report: dict) -> str:
+    supplier_names = report["project_basic_info"]["supplier_names"]
     lines = [
-        "# 政府采购围串标审查报告",
+        "**围串标审查意见书**",
         "",
-        "## 一、审查事项",
-        "",
-        f"案件编号：{report['project_basic_info']['case_id']}",
-        "",
-        f"本次审查围绕 {'、'.join(report['project_basic_info']['supplier_names'])} 等投标供应商提交的投标文件开展，重点核查投标文件之间是否存在异常关联、同源编制、报价协同或者其他疑似围串标线索。",
-        "",
-        "## 二、基本情况",
-        "",
-        f"- 生成时间：{report['project_basic_info']['generated_at']}",
-        f"- 招标文件数量：{report['review_scope']['tender_count']}",
-        f"- 投标文件数量：{report['review_scope']['bid_count']}",
-        f"- 已编目文档数量：{report['review_scope']['document_catalog_count']}",
-        "",
-        "## 三、文件接收情况",
-        "",
-        f"- 招标文件来源：`{report['document_acceptance']['tender_source']}`",
+        f"项目名称：{report['project_basic_info'].get('project_name') or '未自动识别'}  ",
+        f"项目编号：`{report['project_basic_info'].get('project_id') or report['project_basic_info']['case_id']}`  ",
+        f"采购人：{report['project_basic_info'].get('purchaser') or '未自动识别'}  ",
+        f"采购代理机构：{report['project_basic_info'].get('agency') or '未自动识别'}  ",
+        "审查对象：",
     ]
-    for supplier, source in report["document_acceptance"]["bid_sources"].items():
-        lines.append(f"- {supplier} 投标文件来源：`{source}`")
+    for index, profile in enumerate(report["review_object_profiles"], start=1):
+        lines.append(f"{index}. {profile['full_name']}")
     lines.extend(
         [
             "",
-            "## 四、审查依据与方法",
+            "审查依据：",
+            "1. 采购人招标文件",
+            f"2. 上述 {len(supplier_names)} 家供应商投标文件",
+            "3. 投标文件中报价表、授权委托书、基本情况表、技术偏离表、实施方案、业绩材料及相关资格证明材料",
+            "4. 对投标文件目录结构、文本内容、时间特征、联系方式、授权材料等进行的比对分析结果",
+            "",
+            "**一、审查目的**  ",
+            "对本项目各投标供应商投标文件进行比对审查，判断各投标供应商之间是否存在围标、串标嫌疑，并形成初步审查意见。",
+            "",
+            "**二、审查情况**",
             "",
         ]
     )
-    for item in report["review_basis"]:
-        lines.append(f"- {item}")
-    lines.extend([""])
-    for item in report["review_method"]:
-        lines.append(f"- {item}")
-    lines.extend(["", "## 五、审查事实表", ""])
-    lines.extend(_render_markdown_table(report["fact_table"], ["序号", "事实内容", "性质"]))
-    lines.extend(["", "## 六、异常线索表", ""])
-    if report["clue_table"]:
-        lines.extend(_render_markdown_table(report["clue_table"], ["序号", "线索内容", "处置建议"]))
+    for index, section in enumerate(report["review_sections"], start=1):
+        lines.append(f"{index}. **{section['title']}**")
+        for point in section["points"]:
+            lines.append(f"- {point}")
+        lines.extend(["", "审查意见：  ", section["opinion"], ""])
+    lines.extend(["**三、发现的可疑点**", ""])
+    if report["suspicious_points"]:
+        for index, item in enumerate(report["suspicious_points"], start=1):
+            lines.append(f"{index}. {item}")
     else:
-        lines.append("未识别到需要重点说明的异常线索。")
-    lines.extend(["", "## 七、排除性因素表", ""])
-    if report["exclusion_table"]:
-        lines.extend(_render_markdown_table(report["exclusion_table"], ["序号", "排除事项", "说明"]))
+        lines.append("1. 暂未发现需要单列说明的可疑点。")
+    lines.extend(["", "**四、排除性因素**", ""])
+    if report["exclusion_points"]:
+        for index, item in enumerate(report["exclusion_points"], start=1):
+            lines.append(f"{index}. {item}")
     else:
-        lines.append("暂无明确排除性因素。")
-    lines.extend(["", "## 八、风险评分表", ""])
-    lines.extend(
-        _render_markdown_table(
-            report["risk_table"],
-            ["供应商组合", "文件同源分", "报价异常分", "文本相似分", "主体关联分", "授权关联分", "时间轨迹分", "总分", "风险等级"],
-        )
-    )
-    lines.extend(["", "## 九、主要证据摘要", ""])
-    if report["evidence_summary"]:
-        lines.extend(_render_markdown_table(report["evidence_summary"], ["pair", "finding_title", "evidence_grade", "reason"]))
-    else:
-        lines.append("暂无可归集的高价值证据摘要。")
+        lines.append("1. 暂无明确排除性因素。")
     lines.extend(
         [
             "",
-            "## 十、审查意见",
+            "**五、初步审查结论**",
             "",
             report["audit_opinion"]["main_statement"],
             "",
-            report["audit_opinion"]["opinion_note"],
+            "因此，本次审查意见为：  ",
+            f"**{_wrap_conclusion_statement(report['preliminary_conclusion'])}**",
             "",
-            "## 十一、后续核查建议",
+            "**六、建议进一步核查事项**",
             "",
         ]
     )
-    for item in report["follow_up_recommendations"]:
-        lines.append(f"- {item}")
+    for index, item in enumerate(report["further_checks"], start=1):
+        lines.append(f"{index}. {item}")
     lines.extend(
         [
             "",
-            "## 十二、说明",
-            "",
-            "本报告为自动审查底稿，结论应结合人工复核、原始电子文件和外围客观证据综合判断。",
+            f"审查人：政府采购投标文件审查  ",
+            f"审查日期：{report['project_basic_info']['generated_at'][:10]}",
         ]
     )
     return "\n".join(lines)
+
+
+def _extract_tender_metadata(text: str) -> dict:
+    head = text[:6000]
+    return {
+        "project_name": _extract_first_match(head, ("项目名称", "采购项目名称", "招标项目名称")),
+        "project_id": _extract_first_match(head, ("项目编号", "招标编号", "采购编号")),
+        "purchaser": _extract_first_match(head, ("采购人", "采购单位")),
+        "agency": _extract_first_match(head, ("采购代理机构", "代理机构")),
+    }
+
+
+def _build_supplier_profiles(
+    bid_documents: list[dict],
+    price_analysis_table: list[dict],
+    authorization_chain_table: list[dict],
+    timeline_table: list[dict],
+) -> list[dict]:
+    price_map = {row["supplier"]: row for row in price_analysis_table}
+    auth_map = {row["supplier"]: row for row in authorization_chain_table}
+    timeline_map = {row["supplier"]: row for row in timeline_table}
+    profiles: list[dict] = []
+    for doc in bid_documents:
+        supplier = doc["document"]["name"]
+        text = doc["document"]["text"]
+        profiles.append(
+            {
+                "supplier": supplier,
+                "full_name": _extract_company_name(text) or supplier,
+                "bid_amount": price_map.get(supplier, {}).get("bid_amount") or _extract_bid_amount_from_text(text),
+                "phone": _first_or_none(doc.get("phones", [])),
+                "email": _first_or_none(doc.get("emails", [])),
+                "bank_account": _first_or_none(doc.get("bank_accounts", [])),
+                "legal_representative": _clean_person_name(_first_or_none(doc.get("legal_representatives", []))),
+                "address": _first_or_none(doc.get("addresses", [])),
+                "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
+                "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
+            }
+        )
+    return profiles
+
+
+def _build_price_points(profiles: list[dict]) -> list[str]:
+    points: list[str] = []
+    for profile in profiles:
+        if profile.get("bid_amount"):
+            points.append(f"{profile['full_name']}投标总报价为 `{profile['bid_amount']}` 元。")
+    return points or ["当前未从投标文件中自动提取到有效总报价。"]
+
+
+def _build_price_opinion(profiles: list[dict]) -> str:
+    amounts = [float(item["bid_amount"]) for item in profiles if item.get("bid_amount")]
+    if len(amounts) < 2:
+        return "现有材料中可用于比较的报价信息不足，暂不宜仅依据报价作出判断。"
+    if len(set(amounts)) == len(amounts):
+        gap = max(amounts) - min(amounts)
+        return f"各家报价未出现完全一致情形，当前最大价差约为 `{gap:.2f}` 元，单凭报价差异情况尚不足以直接认定存在围串标。"
+    return "存在报价完全一致或高度接近情形，建议结合其他证据进一步核查。"
+
+
+def _build_structure_summary(structure_similarity_table: list[dict], risk_score_table: list[dict]) -> dict:
+    if not structure_similarity_table:
+        return {
+            "points": ["当前未形成可比较的文档结构分析结果。"],
+            "opinion": "结构比对信息不足，暂不作单独判断。",
+        }
+    avg_overlap = sum(row["category_overlap_ratio"] for row in structure_similarity_table) / len(structure_similarity_table)
+    high_pairs = [row for row in risk_score_table if row["technical_text_score"] > 0]
+    points = [
+        f"各投标文件目录结构和材料类别存在一定相似性，平均类别重合度约为 `{avg_overlap:.2f}`。",
+        "该类结构相似性在电子采购平台标准模板场景下具有一定普遍性，应结合非模板文本和主体信息综合判断。",
+    ]
+    for row in high_pairs[:3]:
+        points.append(
+            f"{row['supplier_a']}与{row['supplier_b']}存在非模板文本重合线索，主评分中对应文本相似分为 `{row['technical_text_score']}`。"
+        )
+    opinion = "投标文件框架相似具有模板化解释空间，但已出现的非模板文本重合线索应列入进一步复核范围。"
+    return {"points": points, "opinion": opinion}
+
+
+def _build_identity_points(profiles: list[dict]) -> list[str]:
+    points: list[str] = []
+    for profile in profiles:
+        legal = profile.get("legal_representative") or "未自动识别"
+        phone = profile.get("phone") or "未自动识别"
+        address = profile.get("address") or "未自动识别"
+        points.append(f"{profile['full_name']}法定代表人识别为 `{legal}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。")
+    return points or ["当前未形成可用于身份信息比对的有效结果。"]
+
+
+def _build_identity_opinion(risk_score_table: list[dict]) -> str:
+    if any(row["entity_link_score"] > 0 for row in risk_score_table):
+        return "现有文件中发现部分联系人、账户或主体信息关联线索，建议围绕该类核心身份要素开展重点核查。"
+    return "现有文件中未发现联系人、法定代表人、银行账户等核心身份要素的明显交叉重合，缺乏直接主体关联证据。"
+
+
+def _build_authorization_points(profiles: list[dict]) -> list[str]:
+    return [
+        f"{profile['full_name']}授权及资格材料特征：{profile['authorization_summary']}。"
+        for profile in profiles
+    ] or ["当前未提取到可供说明的授权或资格材料线索。"]
+
+
+def _build_authorization_opinion(profiles: list[dict]) -> str:
+    if any("发现授权/厂家关键词" in profile["authorization_summary"] for profile in profiles):
+        return "现有材料中均可见常规授权或厂家关键词，但尚未发现足以证明同一授权链异常复用的直接证据。"
+    return "现有材料未提取到稳定的授权链线索，建议结合原始授权文件和经销体系进一步核查。"
+
+
+def _build_timeline_points(profiles: list[dict]) -> list[str]:
+    return [
+        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}。"
+        for profile in profiles
+    ] or ["当前未形成稳定的时间特征分析结果。"]
+
+
+def _build_timeline_opinion(profiles: list[dict]) -> str:
+    if any("集中生成" in profile["timeline_summary"] for profile in profiles):
+        return "部分供应商文件存在集中生成迹象，但仍需结合平台日志、原始文件元数据等进一步判断是否属于异常同源制作。"
+    return "目前未发现足以证明同一主体集中制作全部投标文件的明确时间线证据。"
+
+
+def _build_suspicious_points(risk_score_table: list[dict], evidence_grade_table: list[dict]) -> list[str]:
+    points: list[str] = []
+    high_evidence = [row for row in evidence_grade_table if row["evidence_grade"] in {"A", "B"}]
+    for row in risk_score_table:
+        if row["risk_level"] in {"medium", "high", "critical"}:
+            points.append(
+                f"{row['supplier_a']}与{row['supplier_b']}之间存在 `{row['risk_level']}` 风险线索，总分为 `{row['total_score']}`。"
+            )
+    if high_evidence:
+        sample = high_evidence[0]
+        points.append(f"{sample['pair']}存在“{sample['finding_title']}”证据，证据等级为 `{sample['evidence_grade']}`。")
+    return points
+
+
+def _build_exclusion_points(review_conclusion_table: dict, risk_score_table: list[dict]) -> list[str]:
+    points = list(review_conclusion_table.get("exclusionary_factors", []))
+    if all(row["entity_link_score"] == 0 for row in risk_score_table):
+        points.append("各供应商之间未发现联系人、法定代表人、银行账户等核心身份要素的明显重合。")
+    if all(row["file_homology_score"] == 0 for row in risk_score_table):
+        points.append("未发现完全相同的文件指纹或足以证明直接复制形成的同源文件证据。")
+    return points
+
+
+def _build_further_checks(top_pair: dict | None) -> list[str]:
+    focus = ""
+    if top_pair:
+        focus = f"重点核查 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 的"
+    return [
+        f"核查采购平台后台日志、投标客户端登录 IP、上传终端和操作时间轨迹，{focus}上传行为是否存在重合。".strip(),
+        "核查 CA 证书申请、使用人、办证联系人、证书设备信息是否存在关联。",
+        "核查供应商股东、实际控制人、监事、高管、历史联系电话、联系邮箱、社保缴纳单位是否存在交叉。",
+        "核查报价形成依据、产品授权链条、厂家授权时间及经销体系是否存在异常重叠。",
+        "对疑似关联供应商的技术响应底稿、报价测算底稿、投标文件原始可编辑文件进行延伸核验。",
+        "必要时调取平台日志、邮件往来及其他外围客观证据，综合判断是否存在协同投标行为。",
+    ]
+
+
+def _extract_first_match(text: str, labels: tuple[str, ...]) -> str | None:
+    for label in labels:
+        pattern = re.compile(rf"(?:^|\n)\s*{re.escape(label)}\s*[:：]?\s*([^\n]{{2,120}})")
+        match = pattern.search(text)
+        if match:
+            value = match.group(1).strip()
+            value = re.sub(r"^(名称|单位名称)\s*[:：]?\s*", "", value)
+            value = value.strip(" ：:;；")
+            if _looks_metadata_value_reasonable(value):
+                return value
+    return None
+
+
+def _extract_company_name(text: str) -> str | None:
+    pattern = re.compile(r"([A-Za-z（）()·\u4e00-\u9fff]{4,}(?:有限责任公司|股份有限公司|有限公司|公司))")
+    matches = pattern.findall(text)
+    return matches[0].strip() if matches else None
+
+
+def _first_or_none(values: list[str]) -> str | None:
+    return values[0] if values else None
+
+
+def _extract_bid_amount_from_text(text: str) -> str | None:
+    patterns = (
+        r"(?:投标总报价|投标报价|报价金额)\s*[:：]?\s*([0-9][0-9,，.]{3,})",
+        r"(?:总价|金额合计)\s*[:：]?\s*([0-9][0-9,，.]{3,})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).replace("，", ",").replace(",", "")
+            try:
+                amount = float(value)
+                if amount >= 1000:
+                    return f"{amount:.2f}"
+            except ValueError:
+                continue
+    return None
+
+
+def _clean_person_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = re.sub(r"[^\u4e00-\u9fff]", "", value)
+    if 2 <= len(cleaned) <= 6:
+        return cleaned
+    return None
+
+
+def _looks_metadata_value_reasonable(value: str) -> bool:
+    if not value or len(value) > 80:
+        return False
+    bad_tokens = ("签订合同", "供应商须知", "应当", "应按", "不得", "应在")
+    return not any(token in value for token in bad_tokens)
+
+
+def _wrap_conclusion_statement(text: str) -> str:
+    if "未发现明显异常" in text:
+        return "现阶段未发现足以直接认定围串标的充分证据。"
+    if "补充核查" in text:
+        return "存在一定可疑线索，但证据尚不足，建议继续补充核查。"
+    if "重点复核" in text or "进一步取证" in text:
+        return "存在较强可疑线索，建议列为重点复核对象并继续取证。"
+    return text
 
 
 def _render_markdown_table(rows: list[dict], columns: list[str]) -> list[str]:
