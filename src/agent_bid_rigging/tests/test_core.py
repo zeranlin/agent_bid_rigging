@@ -86,6 +86,16 @@ def test_extract_signals_filters_tender_template() -> None:
     assert "项目名称：城市保洁" not in signals.non_tender_lines
 
 
+def test_extract_signals_finds_price_in_opening_table() -> None:
+    bid = load_document_from_text(
+        "alpha",
+        "bid",
+        "开标一览表（报价表）\n项目编号：ABC-001\n投标总报价（元）\n1\n1,788,700.00\n交货期：30日",
+    )
+    signals = extract_signals(bid)
+    assert 1788700.0 in signals.bid_amounts
+
+
 def test_pairwise_scoring_finds_shared_signals() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：保洁服务")
     baseline = build_tender_baseline(tender)

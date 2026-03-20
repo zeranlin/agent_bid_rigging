@@ -143,12 +143,12 @@ def build_entity_field_table(signals: list[ExtractedSignals]) -> list[dict]:
 def build_price_analysis_table(signals: list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
     priced = [
-        (signal.document.name, min(signal.bid_amounts))
+        (signal.document.name, max(signal.bid_amounts))
         for signal in signals
         if signal.bid_amounts
     ]
     for signal in signals:
-        current = min(signal.bid_amounts) if signal.bid_amounts else None
+        current = max(signal.bid_amounts) if signal.bid_amounts else None
         nearest_gap = None
         nearest_supplier = None
         if current is not None:

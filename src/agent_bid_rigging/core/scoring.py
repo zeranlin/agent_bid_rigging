@@ -66,10 +66,10 @@ def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[Pai
         return []
 
     findings: list[PairwiseFinding] = []
-    left_min = min(left.bid_amounts)
-    right_min = min(right.bid_amounts)
-    diff = abs(left_min - right_min)
-    base = max(abs(left_min), abs(right_min), 1.0)
+    left_total = max(left.bid_amounts)
+    right_total = max(right.bid_amounts)
+    diff = abs(left_total - right_total)
+    base = max(abs(left_total), abs(right_total), 1.0)
     ratio = diff / base
 
     if diff == 0:
@@ -77,7 +77,7 @@ def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[Pai
             PairwiseFinding(
                 title="投标报价完全一致",
                 weight=35,
-                evidence=[f"{left.document.name} 与 {right.document.name} 报价均为 {left_min:.2f}"],
+                evidence=[f"{left.document.name} 与 {right.document.name} 报价均为 {left_total:.2f}"],
             )
         )
     elif ratio <= 0.001:

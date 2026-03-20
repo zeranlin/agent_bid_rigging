@@ -9,9 +9,11 @@ from agent_bid_rigging.models import ExtractedSignals, LoadedDocument
 PHONE_RE = re.compile(r"(?<!\d)(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8})(?!\d)")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 BANK_RE = re.compile(r"(?<!\d)\d{12,24}(?!\d)")
-PRICE_RE = re.compile(
+PRICE_INLINE_RE = re.compile(
     r"(?:投标报价|总报价|报价金额|投标总价|含税总价|不含税总价)\s*[:：]?\s*([0-9][0-9,]*(?:\.\d+)?)"
 )
+PRICE_TABLE_ANCHOR_RE = re.compile(r"(?:开标一览表|报价表|投标总报价（元）|投标总报价)")
+FORMATTED_AMOUNT_RE = re.compile(r"([1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?)")
 LEGAL_REP_RE = re.compile(r"(?:法定代表人|法人代表|法定代表)\s*[:：]?\s*([^\n，,；;]{2,20})")
 ADDRESS_RE = re.compile(r"(?:地址|联系地址|办公地址)\s*[:：]?\s*([^\n]{6,80})")
 GENERIC_LINE_PATTERNS = (
@@ -91,12 +93,36 @@ def build_tender_baseline(document: LoadedDocument) -> set[str]:
 
 def _extract_amounts(text: str) -> list[float]:
     amounts: list[float] = []
-    for match in PRICE_RE.findall(text):
-        try:
-            amounts.append(float(match.replace(",", "")))
-        except ValueError:
-            continue
-    return amounts
+    for match in PRICE_INLINE_RE.findall(text):
+        value = _parse_amount(match)
+        if value is not None:
+            amounts.append(value)
+
+    for anchor in PRICE_TABLE_ANCHOR_RE.finditer(text):
+        window = text[anchor.start() : anchor.start() + 400]
+        table_amounts = [
+            value
+            for raw in FORMATTED_AMOUNT_RE.findall(window)
+            if (value := _parse_amount(raw)) is not None
+        ]
+        if table_amounts:
+            amounts.append(max(table_amounts))
+
+    deduped: list[float] = []
+    for amount in amounts:
+        if amount not in deduped:
+            deduped.append(amount)
+    return deduped
+
+
+def _parse_amount(raw: str) -> float | None:
+    try:
+        value = float(raw.replace(",", ""))
+    except ValueError:
+        return None
+    if value < 1000:
+        return None
+    return value
 
 
 def _clean_group(values: list[str]) -> list[str]:
