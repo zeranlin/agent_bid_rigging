@@ -4,4 +4,5 @@ __pycache__/
 *.pyo
 *.pyd
 .DS_Store
+*.egg-info/
 runs/
