@@ -99,18 +99,20 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
         if not normalized:
             continue
 
-        display_name = _safe_display_name(path, index)
+        display_name = _safe_display_name(path, normalized, index)
+        relative_path = _safe_relpath(path, root, display_name, index)
+        title = _derive_title(normalized, display_name)
         sections.append(f"### 文档{index}: {display_name}\n{normalized}")
         components.append(
             {
                 "index": index,
                 "display_name": display_name,
-                "relative_path": _safe_relpath(path, root),
-                "source_path": str(path),
+                "relative_path": relative_path,
+                "source_path": relative_path,
                 "suffix": suffix,
                 "parser": parser,
                 "chars": len(normalized),
-                "title": _derive_title(normalized, display_name),
+                "title": title,
                 "size_bytes": path.stat().st_size,
                 "sha256": _sha256_bytes(path.read_bytes()),
                 "modified_at": _safe_iso_mtime(path),
@@ -208,18 +210,24 @@ def _should_ingest(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_SUFFIXES
 
 
-def _safe_display_name(path: Path, index: int) -> str:
+def _safe_display_name(path: Path, text: str, index: int) -> str:
     name = path.stem.strip()
     if _looks_readable(name):
         return name
+    title = _derive_title(text, "")
+    if _looks_readable(title):
+        cleaned_title = re.sub(r"[\\\\/:*?\"<>|]+", " ", title).strip(" .-_")
+        if cleaned_title:
+            return cleaned_title[:40]
     return f"文档{index}{path.suffix.lower()}"
 
 
-def _safe_relpath(path: Path, root: Path) -> str:
+def _safe_relpath(path: Path, root: Path, display_name: str, index: int) -> str:
     rel_path = str(path.relative_to(root))
     if _looks_readable(rel_path):
         return rel_path
-    return f"文档{path.suffix.lower()}"
+    safe_name = display_name if _looks_readable(display_name) else f"文档{index}"
+    return f"{safe_name}{path.suffix.lower()}"
 
 
 def _looks_readable(text: str) -> bool:
@@ -231,7 +239,11 @@ def _looks_readable(text: str) -> bool:
         if char.isspace():
             continue
         total += 1
-        if char.isalnum() or "\u4e00" <= char <= "\u9fff" or char in "-_().（）[]【】":
+        if (
+            "\u4e00" <= char <= "\u9fff"
+            or char.isascii() and char.isalnum()
+            or char in "-_().（）[]【】"
+        ):
             readable += 1
     return total > 0 and readable / total >= 0.65
 

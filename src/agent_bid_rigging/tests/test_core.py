@@ -54,6 +54,22 @@ def test_load_zip_archive_with_multiple_documents(tmp_path: Path) -> None:
     assert doc.metadata["component_count"] == 2
 
 
+def test_unreadable_archive_names_fall_back_to_titles(tmp_path: Path) -> None:
+    source_dir = tmp_path / "vendor"
+    source_dir.mkdir()
+    bad_name = "σåàΦÆÖσÅñµüÆ.txt"
+    (source_dir / bad_name).write_text("授权委托书\n授权委托人：张三", encoding="utf-8")
+    archive_path = tmp_path / "vendor_bad.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(source_dir / bad_name, arcname=bad_name)
+
+    doc = load_document("vendor", "bid", str(archive_path))
+    component = doc.metadata["components"][0]
+    assert component["display_name"] == "授权委托书"
+    assert component["relative_path"] == "授权委托书.txt"
+    assert component["source_path"] == "授权委托书.txt"
+
+
 def test_extract_signals_filters_tender_template() -> None:
     tender_text = "项目名称：城市保洁\n联系人电话：010-11112222\n通用条款"
     bid_text = (
