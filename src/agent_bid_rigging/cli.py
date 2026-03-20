@@ -85,8 +85,8 @@ def repl() -> None:
             break
         if line == "help":
             click.echo(
-                "示例: analyze --tender examples/tender.txt "
-                "--bid alpha=examples/bid_alpha.txt --bid beta=examples/bid_beta.txt "
+                "示例: analyze --tender 招标文件.zip "
+                "--bid 供应商A=投标文件A.zip --bid 供应商B=投标文件B.zip "
                 "--opinion-mode auto"
             )
             continue

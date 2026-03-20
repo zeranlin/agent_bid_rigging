@@ -14,6 +14,29 @@ PRICE_RE = re.compile(
 )
 LEGAL_REP_RE = re.compile(r"(?:法定代表人|法人代表|法定代表)\s*[:：]?\s*([^\n，,；;]{2,20})")
 ADDRESS_RE = re.compile(r"(?:地址|联系地址|办公地址)\s*[:：]?\s*([^\n]{6,80})")
+GENERIC_LINE_PATTERNS = (
+    "内蒙古自治区政府采购云平台",
+    "法定代表人身份证",
+    "授权委托人身份证",
+    "身份证扫描件",
+    "法定代表人授权委托书",
+    "法定代表人身份证明",
+    "签字并盖章",
+    "投标文件格式",
+    "中型、小型、微型企业",
+    "请在投标文件中附此函",
+    "没有重大违法记录的书面声明",
+    "项目组成人员操作",
+    "培训课程",
+    "信息化管理方法论",
+    "具体经营项目以相关部门",
+)
+GENERIC_LEGAL_VALUES = {
+    "签字的",
+    "身份证明",
+    "法定代表人",
+    "授权委托人",
+}
 
 
 def extract_signals(
@@ -30,9 +53,12 @@ def extract_signals(
         for line in normalized_lines
         if line and len(line) >= 8 and line not in tender_lines
     ]
+    candidate_overlap_lines = [
+        line for line in non_tender_lines if _is_candidate_overlap_line(line)
+    ]
     rare_lines = {
         hashlib.sha1(line.encode("utf-8")).hexdigest()[:12]: line
-        for line, count in Counter(non_tender_lines).items()
+        for line, count in Counter(candidate_overlap_lines).items()
         if count == 1 and _is_informative_line(line)
     }
 
@@ -45,10 +71,13 @@ def extract_signals(
         phones=sorted(set(PHONE_RE.findall(text))),
         emails=sorted(set(match.lower() for match in EMAIL_RE.findall(text))),
         bank_accounts=sorted(set(BANK_RE.findall(text))),
-        legal_representatives=sorted(set(_clean_group(LEGAL_REP_RE.findall(text)))),
+        legal_representatives=sorted(
+            set(_filter_legal_representatives(_clean_group(LEGAL_REP_RE.findall(text))))
+        ),
         addresses=sorted(set(_clean_group(ADDRESS_RE.findall(text)))),
         non_tender_lines=non_tender_lines,
         rare_line_fingerprints=rare_lines,
+        candidate_overlap_lines=candidate_overlap_lines,
     )
 
 
@@ -74,6 +103,17 @@ def _clean_group(values: list[str]) -> list[str]:
     return [value.strip(" ：:;；,.，") for value in values if value.strip()]
 
 
+def _filter_legal_representatives(values: list[str]) -> list[str]:
+    filtered: list[str] = []
+    for value in values:
+        if value in GENERIC_LEGAL_VALUES:
+            continue
+        if any(token in value for token in ("签字", "身份证", "授权", "盖章")):
+            continue
+        filtered.append(value)
+    return filtered
+
+
 def _normalize_line(line: str) -> str:
     line = re.sub(r"\s+", " ", line.strip())
     line = line.replace("（", "(").replace("）", ")")
@@ -86,3 +126,13 @@ def _is_informative_line(line: str) -> bool:
     if len(set(line)) <= 2:
         return False
     return any(char.isalpha() or "\u4e00" <= char <= "\u9fff" for char in line)
+
+
+def _is_candidate_overlap_line(line: str) -> bool:
+    if len(line) < 20:
+        return False
+    if line.startswith("### 文档"):
+        return False
+    if any(pattern in line for pattern in GENERIC_LINE_PATTERNS):
+        return False
+    return _is_informative_line(line)

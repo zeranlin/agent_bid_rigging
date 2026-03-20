@@ -15,8 +15,8 @@ Relevant references:
 
 ## What the harness does
 
-1. Load a tender file and multiple bid files from disk.
-2. Normalize document text using parser backends.
+1. Load a tender package and multiple bid packages from disk.
+2. Normalize document text using parser backends and recursive package ingestion.
 3. Extract suspicious signals:
    - shared phone numbers, emails, addresses, legal representatives, and bank accounts
    - bid amount proximity and exact matches
@@ -49,6 +49,18 @@ agent-bid-rigging analyze \
   --opinion-mode auto
 ```
 
+Real procurement-package example:
+
+```bash
+agent-bid-rigging analyze \
+  --tender 招标文件-01-胃肠镜.zip \
+  --bid 恒禾=投标文件-01-恒禾.zip \
+  --bid 华康=投标文件-01-华康.zip \
+  --bid 唯美=投标文件-01-唯美.zip \
+  --output-dir runs/wcb_review \
+  --opinion-mode template
+```
+
 The command creates a timestamped directory under `runs/` containing:
 
 - `manifest.json`
@@ -78,11 +90,13 @@ The OpenAI integration uses the official Responses API pattern documented by Ope
 - [Responses API reference](https://platform.openai.com/docs/api-reference/responses/create?api-mode=responses)
 - [Migrate to the Responses API](https://platform.openai.com/docs/guides/migrate-to-responses)
 
-## Supported formats
+## Supported inputs
 
-- `.txt`, `.md`, `.json`
-- `.docx` through direct OOXML extraction
-- `.pdf` through the external `pdftotext` backend if installed
+- single files: `.txt`, `.md`, `.json`, `.docx`, `.pdf`
+- directories containing nested supported files
+- `.zip` archives containing nested supported files
+
+PDF parsing prefers `pdftotext` when available and falls back to `pypdf` automatically.
 
 ## Current scope
 

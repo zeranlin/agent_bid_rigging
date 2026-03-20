@@ -16,6 +16,7 @@ This repository is designed for agent-first execution. Treat this file as a map,
 - Keep human-readable and machine-readable outputs aligned.
 - Do not hide parser failures. Surface them in the run manifest.
 - When adding new checks, update docs and tests in the same change.
+- Treat `.zip` archives and extracted bid directories as first-class inputs, not edge cases.
 
 ## Key code paths
 

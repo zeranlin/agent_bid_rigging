@@ -42,7 +42,8 @@ We mirror that pattern in a domain-specific review loop.
 
 - plain text loader for `.txt`, `.md`, `.json`
 - OOXML text extraction for `.docx`
-- external `pdftotext` backend for `.pdf`
+- `pdftotext` backend for `.pdf` when available, with `pypdf` fallback
+- recursive directory and zip archive ingestion for real procurement submission packages
 
 ### 4. Domain analysis layer
 

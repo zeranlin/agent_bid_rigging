@@ -42,6 +42,7 @@ def run_review(
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "tender": tender_doc.to_dict(),
         "suppliers": list(bids.keys()),
+        "normalized_documents": [signal.to_dict() for signal in bid_signals],
         "pairwise_assessments": [assessment.to_dict() for assessment in assessments],
     }
     opinion = generate_review_opinion(report, opinion_mode=opinion_mode)
@@ -72,6 +73,10 @@ def _build_summary(report: dict) -> str:
         f"- 生成时间: {report['generated_at']}",
         f"- 供应商数量: {len(report['suppliers'])}",
         "",
+        "## 总体结论",
+        "",
+        _overall_conclusion(report["pairwise_assessments"]),
+        "",
         "## 两两风险结果",
         "",
     ]
@@ -92,3 +97,16 @@ def _build_summary(report: dict) -> str:
             lines.append(f"- {finding['title']} [+{finding['weight']}]: {evidence}")
         lines.append("")
     return "\n".join(lines)
+
+
+def _overall_conclusion(assessments: list[dict]) -> str:
+    if not assessments:
+        return "没有可比较的供应商对。"
+    top = max(assessments, key=lambda item: item["risk_score"])
+    if top["risk_level"] == "critical":
+        return f"发现高强度异常线索，当前最需重点复核的供应商对为 {top['supplier_a']} 与 {top['supplier_b']}。"
+    if top["risk_level"] == "high":
+        return f"发现较高强度异常线索，当前最需重点复核的供应商对为 {top['supplier_a']} 与 {top['supplier_b']}。"
+    if top["risk_level"] == "medium":
+        return f"发现一定异常线索，建议优先复核 {top['supplier_a']} 与 {top['supplier_b']}。"
+    return "未发现足以支持明显围串标怀疑的强异常信号。"

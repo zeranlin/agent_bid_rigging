@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -61,3 +62,55 @@ class TestCLIEndToEnd:
         assert (out_dir / "summary.md").exists()
         assert (out_dir / "opinion.json").exists()
         assert (out_dir / "opinion.md").exists()
+
+    def test_analyze_accepts_zip_archives(self, tmp_path: Path) -> None:
+        tender_dir = tmp_path / "tender_dir"
+        alpha_dir = tmp_path / "alpha_dir"
+        beta_dir = tmp_path / "beta_dir"
+        tender_dir.mkdir()
+        alpha_dir.mkdir()
+        beta_dir.mkdir()
+
+        (tender_dir / "tender.txt").write_text("项目名称：设备采购\n通用条款：投标人独立编制。", encoding="utf-8")
+        (alpha_dir / "a.txt").write_text(
+            "联系人电话：13800000000\n投标总报价：100000\n特别承诺：备用机18小时到场",
+            encoding="utf-8",
+        )
+        (beta_dir / "b.txt").write_text(
+            "联系人电话：13900000000\n投标总报价：130000\n特别承诺：备用机18小时到场",
+            encoding="utf-8",
+        )
+
+        tender_zip = tmp_path / "tender.zip"
+        alpha_zip = tmp_path / "alpha.zip"
+        beta_zip = tmp_path / "beta.zip"
+        for archive_path, source_dir in (
+            (tender_zip, tender_dir),
+            (alpha_zip, alpha_dir),
+            (beta_zip, beta_dir),
+        ):
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                for path in source_dir.iterdir():
+                    archive.write(path, arcname=path.name)
+
+        out_dir = tmp_path / "zip_run_artifacts"
+        result = self._run(
+            [
+                "analyze",
+                "--json",
+                "--tender",
+                str(tender_zip),
+                "--bid",
+                f"alpha={alpha_zip}",
+                "--bid",
+                f"beta={beta_zip}",
+                "--output-dir",
+                str(out_dir),
+                "--opinion-mode",
+                "template",
+            ]
+        )
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        assert payload["pairwise_assessments"][0]["supplier_a"] == "alpha"
+        assert (out_dir / "summary.md").exists()

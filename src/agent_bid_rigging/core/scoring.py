@@ -1,39 +1,23 @@
 from __future__ import annotations
 
+from collections import Counter
 from itertools import combinations
 
 from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding
 
 
 def assess_pairs(signals: list[ExtractedSignals]) -> list[PairwiseAssessment]:
+    global_line_counts: Counter[str] = Counter()
+    for item in signals:
+        global_line_counts.update(set(item.candidate_overlap_lines))
+
     assessments: list[PairwiseAssessment] = []
     for left, right in combinations(signals, 2):
         findings: list[PairwiseFinding] = []
 
-        findings.extend(
-            _shared_field_findings(
-                "联系人电话重合",
-                30,
-                left.phones,
-                right.phones,
-            )
-        )
-        findings.extend(
-            _shared_field_findings(
-                "邮箱重合",
-                25,
-                left.emails,
-                right.emails,
-            )
-        )
-        findings.extend(
-            _shared_field_findings(
-                "银行账号重合",
-                35,
-                left.bank_accounts,
-                right.bank_accounts,
-            )
-        )
+        findings.extend(_shared_field_findings("联系人电话重合", 30, left.phones, right.phones))
+        findings.extend(_shared_field_findings("邮箱重合", 25, left.emails, right.emails))
+        findings.extend(_shared_field_findings("银行账号重合", 35, left.bank_accounts, right.bank_accounts))
         findings.extend(
             _shared_field_findings(
                 "法定代表人信息重合",
@@ -42,17 +26,9 @@ def assess_pairs(signals: list[ExtractedSignals]) -> list[PairwiseAssessment]:
                 right.legal_representatives,
             )
         )
-        findings.extend(
-            _shared_field_findings(
-                "地址信息重合",
-                20,
-                left.addresses,
-                right.addresses,
-            )
-        )
-
+        findings.extend(_shared_field_findings("地址信息重合", 20, left.addresses, right.addresses))
         findings.extend(_price_findings(left, right))
-        findings.extend(_rare_line_findings(left, right))
+        findings.extend(_pair_only_line_findings(left, right, global_line_counts))
 
         score = sum(finding.weight for finding in findings)
         assessments.append(
@@ -123,17 +99,29 @@ def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[Pai
     return findings
 
 
-def _rare_line_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[PairwiseFinding]:
+def _pair_only_line_findings(
+    left: ExtractedSignals,
+    right: ExtractedSignals,
+    global_line_counts: Counter[str],
+) -> list[PairwiseFinding]:
     overlap = sorted(
-        set(left.rare_line_fingerprints.values()) & set(right.rare_line_fingerprints.values())
+        line
+        for line in (set(left.candidate_overlap_lines) & set(right.candidate_overlap_lines))
+        if global_line_counts[line] == 2
     )
     if not overlap:
         return []
 
-    weight = 15 if len(overlap) == 1 else 25
+    if len(overlap) >= 8:
+        weight = 30
+    elif len(overlap) >= 4:
+        weight = 20
+    else:
+        weight = 10
+
     return [
         PairwiseFinding(
-            title="非招标模板文本重合",
+            title="仅两家共享的非模板文本重合",
             weight=weight,
             evidence=[f"重合行: {line}" for line in overlap[:5]],
         )
@@ -143,7 +131,7 @@ def _rare_line_findings(left: ExtractedSignals, right: ExtractedSignals) -> list
 def _risk_level(score: int) -> str:
     if score >= 80:
         return "critical"
-    if score >= 45:
+    if score >= 50:
         return "high"
     if score >= 20:
         return "medium"

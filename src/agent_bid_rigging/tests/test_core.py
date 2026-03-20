@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import zipfile
 from pathlib import Path
 
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
@@ -26,6 +27,23 @@ def test_unsupported_suffix_raises(tmp_path: Path) -> None:
         assert "Unsupported document format" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_load_zip_archive_with_multiple_documents(tmp_path: Path) -> None:
+    source_dir = tmp_path / "vendor"
+    source_dir.mkdir()
+    (source_dir / "part1.txt").write_text("联系人电话：13800000000", encoding="utf-8")
+    (source_dir / "part2.txt").write_text("投标总报价：123456.00", encoding="utf-8")
+    archive_path = tmp_path / "vendor.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(source_dir / "part1.txt", arcname="part1.txt")
+        archive.write(source_dir / "part2.txt", arcname="part2.txt")
+
+    doc = load_document("vendor", "bid", str(archive_path))
+    assert doc.parser == "zip-archive"
+    assert "联系人电话：13800000000" in doc.text
+    assert "投标总报价：123456.00" in doc.text
+    assert doc.metadata["component_count"] == 2
 
 
 def test_extract_signals_filters_tender_template() -> None:
@@ -81,6 +99,30 @@ def test_pairwise_scoring_can_stay_low() -> None:
     )
     assessment = assess_pairs([left, right])[0]
     assert assessment.risk_level == "low"
+
+
+def test_signature_noise_does_not_create_high_risk() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：保洁服务")
+    baseline = build_tender_baseline(tender)
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "法定代表人身份证明\n法定代表人（签字）：\n授权委托人（签字）：\n投标报价：100000",
+        ),
+        tender_lines=baseline,
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "法定代表人身份证明\n法定代表人（签字）：\n授权委托人（签字）：\n投标报价：150000",
+        ),
+        tender_lines=baseline,
+    )
+    assessment = assess_pairs([left, right])[0]
+    assert assessment.risk_level == "low"
+    assert not assessment.findings
 
 
 def test_template_opinion_mentions_high_risk_pair() -> None:

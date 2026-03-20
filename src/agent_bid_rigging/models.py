@@ -32,6 +32,7 @@ class ExtractedSignals:
     addresses: list[str] = field(default_factory=list)
     non_tender_lines: list[str] = field(default_factory=list)
     rare_line_fingerprints: dict[str, str] = field(default_factory=dict)
+    candidate_overlap_lines: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
