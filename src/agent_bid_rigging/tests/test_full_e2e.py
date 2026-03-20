@@ -59,3 +59,5 @@ class TestCLIEndToEnd:
         assert (out_dir / "manifest.json").exists()
         assert (out_dir / "pairwise_report.json").exists()
         assert (out_dir / "summary.md").exists()
+        assert (out_dir / "opinion.json").exists()
+        assert (out_dir / "opinion.md").exists()

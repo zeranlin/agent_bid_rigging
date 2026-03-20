@@ -29,6 +29,13 @@ def cli(ctx: click.Context, json_output: bool) -> None:
 )
 @click.option("--output-dir", type=click.Path(), default=None)
 @click.option("--label", default=None)
+@click.option(
+    "--opinion-mode",
+    type=click.Choice(["auto", "template", "llm"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="How to generate the review opinion document.",
+)
 @click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
 @click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
 @click.pass_context
@@ -38,11 +45,18 @@ def analyze(
     bid_items: tuple[str, ...],
     output_dir: str | None,
     label: str | None,
+    opinion_mode: str,
     json_flag: bool,
     json_flag_compat: bool,
 ) -> None:
     bids = _parse_bid_items(bid_items)
-    report = run_review(tender, bids, output_dir=output_dir, label=label)
+    report = run_review(
+        tender,
+        bids,
+        output_dir=output_dir,
+        label=label,
+        opinion_mode=opinion_mode.lower(),
+    )
     if ctx.obj.get("json_output") or json_flag or json_flag_compat:
         click.echo(json.dumps(report, ensure_ascii=False, indent=2))
         return
@@ -72,7 +86,8 @@ def repl() -> None:
         if line == "help":
             click.echo(
                 "示例: analyze --tender examples/tender.txt "
-                "--bid alpha=examples/bid_alpha.txt --bid beta=examples/bid_beta.txt"
+                "--bid alpha=examples/bid_alpha.txt --bid beta=examples/bid_beta.txt "
+                "--opinion-mode auto"
             )
             continue
 

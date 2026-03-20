@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 5 unit tests planned
+- `test_core.py`: 6 unit tests planned
 - `test_full_e2e.py`: 2 end-to-end tests planned
 
 ## Unit Test Plan
@@ -18,6 +18,10 @@
 - `core/scoring.py`
   - score supplier pair from overlapping identifiers and text
   - edge cases: low-risk pair with no overlap
+  - expected tests: 1
+- `core/opinion.py`
+  - generate deterministic review opinion from structured report
+  - edge cases: high-risk pair should be called out in the conclusion
   - expected tests: 1
 
 ## E2E Test Plan
@@ -48,26 +52,27 @@ rootdir: /Users/linzeran/code/2026-zn/agent_bid_rigging
 configfile: pyproject.toml
 testpaths: src/agent_bid_rigging/tests
 plugins: anyio-4.8.0
-collecting ... collected 7 items
+collecting ... collected 8 items
 
-src/agent_bid_rigging/tests/test_core.py::test_load_plain_text_document PASSED [ 14%]
-src/agent_bid_rigging/tests/test_core.py::test_unsupported_suffix_raises PASSED [ 28%]
-src/agent_bid_rigging/tests/test_core.py::test_extract_signals_filters_tender_template PASSED [ 42%]
-src/agent_bid_rigging/tests/test_core.py::test_pairwise_scoring_finds_shared_signals PASSED [ 57%]
-src/agent_bid_rigging/tests/test_core.py::test_pairwise_scoring_can_stay_low PASSED [ 71%]
-src/agent_bid_rigging/tests/test_full_e2e.py::TestCLIEndToEnd::test_help PASSED [ 85%]
+src/agent_bid_rigging/tests/test_core.py::test_load_plain_text_document PASSED [ 12%]
+src/agent_bid_rigging/tests/test_core.py::test_unsupported_suffix_raises PASSED [ 25%]
+src/agent_bid_rigging/tests/test_core.py::test_extract_signals_filters_tender_template PASSED [ 37%]
+src/agent_bid_rigging/tests/test_core.py::test_pairwise_scoring_finds_shared_signals PASSED [ 50%]
+src/agent_bid_rigging/tests/test_core.py::test_pairwise_scoring_can_stay_low PASSED [ 62%]
+src/agent_bid_rigging/tests/test_core.py::test_template_opinion_mentions_high_risk_pair PASSED [ 75%]
+src/agent_bid_rigging/tests/test_full_e2e.py::TestCLIEndToEnd::test_help PASSED [ 87%]
 src/agent_bid_rigging/tests/test_full_e2e.py::TestCLIEndToEnd::test_analyze_generates_artifacts PASSED [100%]
 
-============================== 7 passed in 0.16s ===============================
+============================== 8 passed in 0.16s ===============================
 ```
 
 ## Summary Statistics
 
-- Total tests: 7
+- Total tests: 8
 - Pass rate: 100%
 - Execution time: 0.16s
 
 ## Coverage Notes
 
-- Covered: plain text loading, unsupported format handling, extraction, scoring, CLI help, end-to-end artifact generation
+- Covered: plain text loading, unsupported format handling, extraction, scoring, opinion drafting, CLI help, end-to-end artifact generation
 - Not yet covered: `.docx` parsing, external `pdftotext` backend integration, malformed procurement tables, OCR/scanned files

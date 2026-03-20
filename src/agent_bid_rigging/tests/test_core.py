@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
+from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.utils.file_loader import load_document
 
@@ -80,6 +81,33 @@ def test_pairwise_scoring_can_stay_low() -> None:
     )
     assessment = assess_pairs([left, right])[0]
     assert assessment.risk_level == "low"
+
+
+def test_template_opinion_mentions_high_risk_pair() -> None:
+    report = {
+        "run_name": "demo",
+        "generated_at": "2026-03-20T19:35:19",
+        "suppliers": ["alpha", "beta"],
+        "pairwise_assessments": [
+            {
+                "supplier_a": "alpha",
+                "supplier_b": "beta",
+                "risk_score": 90,
+                "risk_level": "critical",
+                "findings": [
+                    {
+                        "title": "联系人电话重合",
+                        "weight": 30,
+                        "evidence": ["共享字段值: 13800000000"],
+                    }
+                ],
+            }
+        ],
+    }
+    opinion = generate_review_opinion(report, opinion_mode="template")
+    assert opinion["mode"] == "template"
+    assert "围串标审查意见书" in opinion["document"]
+    assert "`alpha` 与 `beta`" in opinion["document"]
 
 
 def load_document_from_text(name: str, role: str, text: str):

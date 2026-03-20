@@ -23,7 +23,8 @@ Relevant references:
    - repeated non-template text across suppliers
    - identical rare lines that do not originate from the tender
 4. Score each supplier pair and classify the result as `low`, `medium`, `high`, or `critical`.
-5. Persist a full run directory with machine-readable JSON and a human-readable Markdown summary.
+5. Generate a structured review opinion document, with optional LLM drafting.
+6. Persist a full run directory with machine-readable JSON and human-readable Markdown artifacts.
 
 ## Repository map
 
@@ -44,7 +45,8 @@ agent-bid-rigging analyze \
   --tender examples/tender.txt \
   --bid alpha=examples/bid_alpha.txt \
   --bid beta=examples/bid_beta.txt \
-  --bid gamma=examples/bid_gamma.txt
+  --bid gamma=examples/bid_gamma.txt \
+  --opinion-mode auto
 ```
 
 The command creates a timestamped directory under `runs/` containing:
@@ -53,6 +55,28 @@ The command creates a timestamped directory under `runs/` containing:
 - `normalized/*.json`
 - `pairwise_report.json`
 - `summary.md`
+- `opinion.json`
+- `opinion.md`
+
+## LLM review agent
+
+The harness now includes an opinion drafting layer:
+
+- `--opinion-mode template`: always generate a deterministic opinion template
+- `--opinion-mode llm`: require an LLM draft through OpenAI Responses API
+- `--opinion-mode auto`: use OpenAI when `OPENAI_API_KEY` is configured, otherwise fall back to the deterministic template
+
+Environment variables:
+
+- `OPENAI_API_KEY`: enables LLM opinion drafting
+- `OPENAI_MODEL`: optional model override, default `gpt-5`
+- `OPENAI_BASE_URL`: optional Responses API endpoint override
+
+The OpenAI integration uses the official Responses API pattern documented by OpenAI:
+
+- [OpenAI Platform overview](https://platform.openai.com/docs/overview)
+- [Responses API reference](https://platform.openai.com/docs/api-reference/responses/create?api-mode=responses)
+- [Migrate to the Responses API](https://platform.openai.com/docs/guides/migrate-to-responses)
 
 ## Supported formats
 
@@ -62,4 +86,4 @@ The command creates a timestamped directory under `runs/` containing:
 
 ## Current scope
 
-This first version is a review harness, not a final legal adjudication engine. It produces evidence-backed suspicion indicators for human procurement reviewers. Later iterations can add OCR, richer metadata extraction, LLM-guided evidence drafting, and benchmark datasets.
+This remains a review harness, not a final legal adjudication engine. It produces evidence-backed suspicion indicators and a draft opinion for human procurement reviewers. Later iterations can add OCR, richer metadata extraction, benchmark datasets, and stronger multi-document reasoning.

@@ -22,7 +22,9 @@ This repository is designed for agent-first execution. Treat this file as a map,
 - `src/agent_bid_rigging/cli.py`: CLI entry point and REPL
 - `src/agent_bid_rigging/core/runner.py`: end-to-end run orchestration
 - `src/agent_bid_rigging/core/extractor.py`: signal extraction
+- `src/agent_bid_rigging/core/opinion.py`: review opinion generation
 - `src/agent_bid_rigging/core/scoring.py`: pairwise risk scoring
+- `src/agent_bid_rigging/utils/openai_client.py`: OpenAI Responses API adapter
 - `src/agent_bid_rigging/utils/file_loader.py`: document backend selection
 
 ## Documents

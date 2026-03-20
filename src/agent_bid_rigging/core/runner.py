@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
+from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.models import ExtractedSignals
 from agent_bid_rigging.utils.file_loader import load_document
@@ -15,6 +16,7 @@ def run_review(
     bids: dict[str, str],
     output_dir: str | None = None,
     label: str | None = None,
+    opinion_mode: str = "auto",
 ) -> dict:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = label or f"review_{timestamp}"
@@ -42,16 +44,20 @@ def run_review(
         "suppliers": list(bids.keys()),
         "pairwise_assessments": [assessment.to_dict() for assessment in assessments],
     }
+    opinion = generate_review_opinion(report, opinion_mode=opinion_mode)
     manifest = {
         "run_name": run_name,
         "output_dir": str(base_dir.resolve()),
         "tender_path": tender_doc.path,
         "bid_paths": bids,
+        "opinion_mode": opinion["mode"],
     }
 
     _write_json(base_dir / "manifest.json", manifest)
     _write_json(base_dir / "pairwise_report.json", report)
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
+    _write_json(base_dir / "opinion.json", opinion)
+    (base_dir / "opinion.md").write_text(opinion["document"], encoding="utf-8")
     return report
 
 
