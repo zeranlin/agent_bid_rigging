@@ -82,7 +82,23 @@ Environment variables:
 
 - `OPENAI_API_KEY`: enables LLM opinion drafting
 - `OPENAI_MODEL`: optional model override, default `gpt-5`
-- `OPENAI_BASE_URL`: optional Responses API endpoint override
+- `OPENAI_BASE_URL`: optional OpenAI-compatible root URL or Responses endpoint override
+- `OPENAI_TIMEOUT`: optional request timeout in seconds, default `180`
+
+Example for a self-hosted OpenAI-compatible endpoint:
+
+```bash
+export OPENAI_BASE_URL="http://112.111.54.86:10011/v1"
+export OPENAI_MODEL="qwen3.5-27b"
+export OPENAI_API_KEY="your-password-or-api-key"
+agent-bid-rigging analyze \
+  --tender 招标文件.zip \
+  --bid A=投标文件A.zip \
+  --bid B=投标文件B.zip \
+  --opinion-mode llm
+```
+
+If `OPENAI_BASE_URL` ends with `/v1`, the harness automatically appends `/responses`.
 
 The OpenAI integration uses the official Responses API pattern documented by OpenAI:
 
