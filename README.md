@@ -83,7 +83,7 @@ Environment variables:
 - `OPENAI_API_KEY`: enables LLM opinion drafting
 - `OPENAI_MODEL`: optional model override, default `gpt-5`
 - `OPENAI_BASE_URL`: optional OpenAI-compatible root URL or Responses endpoint override
-- `OPENAI_TIMEOUT`: optional request timeout in seconds, default `180`
+- `OPENAI_TIMEOUT`: optional request timeout in seconds, default `1800`
 
 Example for a self-hosted OpenAI-compatible endpoint:
 

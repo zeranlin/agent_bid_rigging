@@ -12,7 +12,7 @@ class OpenAIResponsesClient:
     api_key: str
     model: str = "gpt-5"
     base_url: str = "https://api.openai.com/v1/responses"
-    timeout: int = 180
+    timeout: int = 1800
 
     @classmethod
     def is_configured(cls) -> bool:
@@ -25,11 +25,11 @@ class OpenAIResponsesClient:
             raise RuntimeError("OPENAI_API_KEY is not configured.")
         model = os.environ.get("OPENAI_MODEL", "gpt-5").strip() or "gpt-5"
         base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1/responses").strip()
-        timeout_raw = os.environ.get("OPENAI_TIMEOUT", "180").strip() or "180"
+        timeout_raw = os.environ.get("OPENAI_TIMEOUT", "1800").strip() or "1800"
         try:
             timeout = max(1, int(timeout_raw))
         except ValueError:
-            timeout = 180
+            timeout = 1800
         return cls(
             api_key=api_key,
             model=model,
