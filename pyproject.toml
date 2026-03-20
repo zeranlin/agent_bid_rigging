@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-bid-rigging"
+version = "0.1.0"
+description = "Agent-first harness for government procurement bid-rigging review."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "OpenAI Codex"}
+]
+dependencies = [
+  "click>=8.1,<9",
+]
+
+[project.scripts]
+agent-bid-rigging = "agent_bid_rigging.cli:cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/agent_bid_rigging/tests"]
+pythonpath = ["src"]

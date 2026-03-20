@@ -1,0 +1,72 @@
+# Architecture
+
+## Goal
+
+Build a reproducible harness for procurement bid-rigging review. The harness must let an agent or a human reviewer run the same workflow repeatedly and inspect the exact evidence behind every suspicion result.
+
+## Why this shape
+
+This repository follows two ideas highlighted by OpenAI:
+
+- In [Harness engineering](https://openai.com/zh-Hans-CN/index/harness-engineering/), the repository is treated as the record system, with a short `AGENTS.md`, structured docs, and explicit execution plans.
+- In [Unrolling the Codex agent loop](https://openai.com/zh-Hans-CN/index/unrolling-the-codex-agent-loop/), the core loop is prompt or intent -> tool call -> observation -> updated plan -> final message.
+
+We mirror that pattern in a domain-specific review loop.
+
+## Review loop
+
+1. Define the review task.
+2. Load tender and bid documents with explicit parser backends.
+3. Normalize text and metadata into structured evidence.
+4. Extract suspicious signals per document.
+5. Compare supplier pairs while filtering out shared tender template language.
+6. Score risk and record explainable findings.
+7. Persist the run bundle for human re-check and future agent reuse.
+
+## System layers
+
+### 1. Interface layer
+
+- CLI commands
+- REPL mode for iterative reviews
+- JSON output for downstream automation
+
+### 2. Orchestration layer
+
+- validates input
+- creates run directories
+- invokes parsing, extraction, scoring, and report generation
+- writes manifests and summaries
+
+### 3. Parsing layer
+
+- plain text loader for `.txt`, `.md`, `.json`
+- OOXML text extraction for `.docx`
+- external `pdftotext` backend for `.pdf`
+
+### 4. Domain analysis layer
+
+- entity extraction from procurement documents
+- pricing signal extraction
+- rare-line and overlap detection
+- tender-template filtering
+
+### 5. Evidence and reporting layer
+
+- normalized per-document JSON
+- pairwise comparison report
+- human-readable markdown summary
+
+## Design principles
+
+- Evidence first: every score must cite the underlying evidence.
+- Deterministic baseline: core checks should run without an LLM.
+- Agent-readable artifacts: outputs must be easy for a later agent run to resume from.
+- Extensible backends: document parsing and scoring rules are isolated modules.
+
+## Future extensions
+
+- OCR and scanned PDF support
+- richer tabular bid schedule comparison
+- LLM-generated investigation memos grounded in extracted evidence
+- adjudication benchmark set and regression harness
