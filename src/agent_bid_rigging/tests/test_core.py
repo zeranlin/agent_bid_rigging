@@ -216,6 +216,30 @@ def test_evidence_grading_and_formal_report() -> None:
     assert report["audit_opinion"]["main_statement"]
 
 
+def test_risk_score_table_matches_pairwise_assessment() -> None:
+    assessment = assess_pairs(
+        [
+            extract_signals(
+                load_document_from_text(
+                    "alpha",
+                    "bid",
+                    "联系人电话：13800000000\n邮箱：same@example.com\n投标报价：100000\n特别说明：售后培训方案一致",
+                )
+            ),
+            extract_signals(
+                load_document_from_text(
+                    "beta",
+                    "bid",
+                    "联系人电话：13800000000\n邮箱：same@example.com\n投标报价：100000\n特别说明：售后培训方案一致",
+                )
+            ),
+        ]
+    )[0]
+    risk_table = build_risk_score_table([assessment], [], [], [], [], [])
+    assert risk_table[0]["total_score"] == assessment.risk_score
+    assert risk_table[0]["risk_level"] == assessment.risk_level
+
+
 def load_document_from_text(name: str, role: str, text: str):
     temp_dir = Path(tempfile.mkdtemp(prefix="agent_bid_rigging_test_"))
     path = temp_dir / f"{name}_{role}.txt"

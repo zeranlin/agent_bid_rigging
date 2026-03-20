@@ -238,13 +238,20 @@ def build_risk_score_table(
         duplicate_row = duplicate_map.get(key, {})
         text_row = text_map.get(key, {})
 
-        file_homology = min(30, duplicate_row.get("duplicate_count", 0) * 15)
+        file_homology = _finding_weight(
+            assessment,
+            {
+                "文件完全一致",
+                "文件高度同源",
+                "文件指纹重合",
+            },
+        )
         pricing = _pricing_score(assessment)
         entity = _entity_score(assessment)
-        text_score = _text_similarity_score(text_row, assessment)
-        authorization = _authorization_score(auth_map.get(assessment.supplier_a, {}), auth_map.get(assessment.supplier_b, {}))
-        timeline = _timeline_score(timeline_map.get(assessment.supplier_a, {}), timeline_map.get(assessment.supplier_b, {}))
-        total = file_homology + pricing + entity + text_score + authorization + timeline
+        text_score = _text_similarity_score(assessment)
+        authorization = _finding_weight(assessment, {"授权链重合", "授权材料异常一致"})
+        timeline = _finding_weight(assessment, {"时间轨迹异常接近", "创建修改时间高度重合"})
+        total = assessment.risk_score
 
         rows.append(
             {
@@ -257,8 +264,15 @@ def build_risk_score_table(
                 "authorization_score": authorization,
                 "timeline_score": timeline,
                 "total_score": total,
-                "risk_level": _risk_level_from_total(total),
-                "explanation": f"结构相似度={structure_row.get('category_overlap_ratio', 0)}, 文本相似度={text_row.get('full_text_similarity', 0)}",
+                "risk_level": assessment.risk_level,
+                "explanation": (
+                    f"主评分口径={assessment.risk_score}, "
+                    f"结构相似度={structure_row.get('category_overlap_ratio', 0)}, "
+                    f"重复文件数={duplicate_row.get('duplicate_count', 0)}, "
+                    f"文本相似度={text_row.get('full_text_similarity', 0)}, "
+                    f"授权支持={_authorization_indicator(auth_map.get(assessment.supplier_a, {}), auth_map.get(assessment.supplier_b, {}))}, "
+                    f"时间支持={_timeline_indicator(timeline_map.get(assessment.supplier_a, {}), timeline_map.get(assessment.supplier_b, {}))}"
+                ),
             }
         )
     return rows
@@ -787,32 +801,35 @@ def _entity_score(assessment: PairwiseAssessment) -> int:
     return min(30, score)
 
 
-def _text_similarity_score(text_row: dict, assessment: PairwiseAssessment) -> int:
-    similarity = text_row.get("full_text_similarity", 0)
-    if any("文本重合" in finding.title for finding in assessment.findings):
-        if similarity >= 0.8:
-            return 18
-        if similarity >= 0.5:
-            return 12
-        return 8
+def _text_similarity_score(assessment: PairwiseAssessment) -> int:
+    for finding in assessment.findings:
+        if "文本重合" in finding.title:
+            return finding.weight
     return 0
 
 
-def _authorization_score(left: dict, right: dict) -> int:
+def _finding_weight(assessment: PairwiseAssessment, titles: set[str]) -> int:
+    for finding in assessment.findings:
+        if finding.title in titles:
+            return finding.weight
+    return 0
+
+
+def _authorization_indicator(left: dict, right: dict) -> str:
     left_auth = set(left.get("manufacturer_mentions", []))
     right_auth = set(right.get("manufacturer_mentions", []))
     overlap = left_auth & right_auth
     if overlap:
-        return 10
-    return 0
+        return f"shared:{len(overlap)}"
+    return "none"
 
 
-def _timeline_score(left: dict, right: dict) -> int:
+def _timeline_indicator(left: dict, right: dict) -> str:
     left_times = set(left.get("modified_times", []))
     right_times = set(right.get("modified_times", []))
     if left_times and right_times and left_times & right_times:
-        return 8
-    return 0
+        return f"shared:{len(left_times & right_times)}"
+    return "none"
 
 
 def _risk_level_from_total(total: int) -> str:
