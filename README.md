@@ -103,6 +103,8 @@ Environment variables:
 - `OPENAI_MODEL`: optional model override, default `gpt-5`
 - `OPENAI_BASE_URL`: optional OpenAI-compatible root URL or Responses endpoint override
 - `OPENAI_TIMEOUT`: optional request timeout in seconds, default `1800`
+- `OPENAI_REASONING_EFFORT`: optional reasoning effort override, for example `low`
+- `OPENAI_NO_THINKING`: optional boolean flag for compatible endpoints, set `1` to send `enable_thinking=false`
 
 Example for a self-hosted OpenAI-compatible endpoint:
 
@@ -110,6 +112,8 @@ Example for a self-hosted OpenAI-compatible endpoint:
 export OPENAI_BASE_URL="http://112.111.54.86:10011/v1"
 export OPENAI_MODEL="qwen3.5-27b"
 export OPENAI_API_KEY="your-password-or-api-key"
+export OPENAI_TIMEOUT="1800"
+export OPENAI_NO_THINKING="1"
 agent-bid-rigging analyze \
   --tender 招标文件.zip \
   --bid A=投标文件A.zip \

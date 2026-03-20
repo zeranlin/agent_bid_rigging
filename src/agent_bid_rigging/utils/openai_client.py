@@ -13,6 +13,8 @@ class OpenAIResponsesClient:
     model: str = "gpt-5"
     base_url: str = "https://api.openai.com/v1/responses"
     timeout: int = 1800
+    reasoning_effort: str | None = None
+    no_thinking: bool = False
 
     @classmethod
     def is_configured(cls) -> bool:
@@ -26,6 +28,8 @@ class OpenAIResponsesClient:
         model = os.environ.get("OPENAI_MODEL", "gpt-5").strip() or "gpt-5"
         base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1/responses").strip()
         timeout_raw = os.environ.get("OPENAI_TIMEOUT", "1800").strip() or "1800"
+        reasoning_effort = os.environ.get("OPENAI_REASONING_EFFORT", "").strip() or None
+        no_thinking = _env_truthy(os.environ.get("OPENAI_NO_THINKING", ""))
         try:
             timeout = max(1, int(timeout_raw))
         except ValueError:
@@ -35,6 +39,8 @@ class OpenAIResponsesClient:
             model=model,
             base_url=_normalize_base_url(base_url),
             timeout=timeout,
+            reasoning_effort=reasoning_effort,
+            no_thinking=no_thinking,
         )
 
     def generate_markdown(self, system_prompt: str, user_prompt: str) -> str:
@@ -45,6 +51,10 @@ class OpenAIResponsesClient:
                 {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
             ],
         }
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+        if self.no_thinking:
+            payload["enable_thinking"] = False
         body = json.dumps(payload).encode("utf-8")
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -94,3 +104,7 @@ def _normalize_base_url(raw_url: str) -> str:
 
     normalized = parsed._replace(path=final_path, params="", query="", fragment="")
     return normalized.geturl()
+
+
+def _env_truthy(raw: str) -> bool:
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
