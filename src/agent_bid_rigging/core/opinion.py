@@ -51,32 +51,43 @@ def _generate_template_opinion(report: dict) -> str:
     )
     conclusion = _conclusion_text(top_risk)
     findings = _format_key_findings(report)
+    formal_report = report.get("formal_report", {})
+    risk_summary = formal_report.get("risk_summary", [])
+    evidence_summary = formal_report.get("evidence_summary", [])
 
     lines = [
         "# 围串标审查意见书",
         "",
-        "## 一、项目概况",
+        "## 一、审查概况",
         "",
         f"本次审查针对运行批次 `{report['run_name']}` 开展，系统共接收 1 份招标文件和 {len(report['suppliers'])} 份投标文件。",
-        f"审查生成时间为 {report['generated_at']}。",
+        f"审查生成时间为 {report['generated_at']}，审查对象为 {'、'.join(report['suppliers'])}。",
         "",
-        "## 二、审查方法",
+        "## 二、审查依据与方法",
         "",
-        "本意见书基于规则引擎自动抽取的客观信号形成，包括联系人信息、银行账号、地址、法定代表人、报价接近程度，以及剔除招标模板内容和固定格式页噪声后的非模板文本重合情况。",
+        "本意见书基于规则引擎自动抽取的客观信号形成，包括联系人信息、银行账号、地址、法定代表人、报价异常、非模板文本重合、结构同源、授权链和时间轨迹等线索。",
         "",
         "## 三、审查发现",
         "",
         findings,
         "",
-        "## 四、初步审查意见",
+        "## 四、风险评分摘要",
+        "",
+        _format_risk_summary(risk_summary),
+        "",
+        "## 五、主要证据摘要",
+        "",
+        _format_evidence_summary(evidence_summary),
+        "",
+        "## 六、初步审查意见",
         "",
         conclusion,
         "",
-        "## 五、建议措施",
+        "## 七、建议措施",
         "",
         _recommendations(top_risk),
         "",
-        "## 六、说明",
+        "## 八、说明",
         "",
         "本意见书为自动生成的审查底稿，旨在为政府采购审查人员提供复核起点，不能替代最终行政认定或法律结论。",
     ]
@@ -120,7 +131,7 @@ def _build_llm_input(report: dict) -> str:
         [
             "",
             "写作要求:",
-            "1. 结构包括：项目概况、审查方法、审查发现、初步审查意见、建议措施、说明。",
+            "1. 结构包括：审查概况、审查依据与方法、审查发现、风险评分摘要、主要证据摘要、初步审查意见、建议措施、说明。",
             "2. 结论要与证据强度匹配。",
             "3. 明确指出高风险供应商对及其证据。",
             "4. 若风险较低，应说明暂未发现明显异常。",
@@ -175,3 +186,25 @@ def _recommendations(top_risk: dict | None) -> str:
         "建议调取原始电子投标文件及形成过程材料，核查联系人、设备、网络、账号、排版痕迹等关联信息；"
         "必要时结合工商、社保、纳税、银行流水等外围证据开展联合核查。"
     )
+
+
+def _format_risk_summary(risk_summary: list[dict]) -> str:
+    if not risk_summary:
+        return "- 暂无风险评分结果。"
+    lines = []
+    for item in risk_summary:
+        lines.append(
+            f"- {item['supplier_a']} 与 {item['supplier_b']}：总分 {item['total_score']}，风险等级 {item['risk_level']}。"
+        )
+    return "\n".join(lines)
+
+
+def _format_evidence_summary(evidence_summary: list[dict]) -> str:
+    if not evidence_summary:
+        return "- 暂无主要证据摘要。"
+    lines = []
+    for item in evidence_summary[:8]:
+        lines.append(
+            f"- {item['pair']}：{item['finding_title']}，证据等级 {item['evidence_grade']}。"
+        )
+    return "\n".join(lines)

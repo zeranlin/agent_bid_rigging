@@ -209,8 +209,11 @@ def test_evidence_grading_and_formal_report() -> None:
         risk_score_table=risk,
     )
     markdown = build_formal_report_markdown(report)
-    assert "正式审查报告" in markdown
+    assert "政府采购围串标审查报告" in markdown
+    assert "审查事实表" in markdown
+    assert "风险评分表" in markdown
     assert report["preliminary_conclusion"]
+    assert report["audit_opinion"]["main_statement"]
 
 
 def load_document_from_text(name: str, role: str, text: str):

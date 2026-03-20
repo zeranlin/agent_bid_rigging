@@ -272,6 +272,38 @@ def build_formal_report(
     risk_score_table: list[dict],
 ) -> dict:
     top_pair = max(risk_score_table, key=lambda item: item["total_score"], default=None)
+    source_paths = case_manifest.get("source_paths", {})
+    evidence_summary = evidence_grade_table[:12]
+    fact_table = [
+        {"序号": index, "事实内容": item, "性质": "已识别事实"}
+        for index, item in enumerate(review_conclusion_table["verified_facts"], start=1)
+    ]
+    clue_table = [
+        {
+            "序号": index,
+            "线索内容": item,
+            "处置建议": "列为重点复核对象" if "critical" in item or "high" in item else "纳入一般复核",
+        }
+        for index, item in enumerate(review_conclusion_table["suspicious_clues"], start=1)
+    ]
+    exclusion_table = [
+        {"序号": index, "排除事项": item, "说明": "当前自动审查未见明显异常。"}
+        for index, item in enumerate(review_conclusion_table["exclusionary_factors"], start=1)
+    ]
+    risk_table = [
+        {
+            "供应商组合": f"{item['supplier_a']} / {item['supplier_b']}",
+            "文件同源分": item["file_homology_score"],
+            "报价异常分": item["pricing_score"],
+            "文本相似分": item["technical_text_score"],
+            "主体关联分": item["entity_link_score"],
+            "授权关联分": item["authorization_score"],
+            "时间轨迹分": item["timeline_score"],
+            "总分": item["total_score"],
+            "风险等级": item["risk_level"],
+        }
+        for item in risk_score_table
+    ]
     report = {
         "project_basic_info": {
             "case_id": case_manifest["case_id"],
@@ -283,6 +315,10 @@ def build_formal_report(
             "bid_count": case_manifest["input_summary"]["bid_count"],
             "document_catalog_count": len(document_catalog),
         },
+        "document_acceptance": {
+            "tender_source": source_paths.get("tender", ""),
+            "bid_sources": source_paths.get("bids", {}),
+        },
         "review_method": [
             "文件接收与建档",
             "文本与元数据抽取",
@@ -290,12 +326,26 @@ def build_formal_report(
             "报价、主体、授权与时间线分析",
             "证据分级与风险评分",
         ],
+        "review_basis": [
+            "以采购人提供的招标文件、供应商提交的投标文件为基础材料。",
+            "以自动抽取的结构化字段、文档分类、文本比对和风险评分结果为辅助审查依据。",
+            "自动化结果仅作为审查线索，不直接替代行政认定或法律结论。",
+        ],
         "review_findings": review_conclusion_table["verified_facts"],
         "suspicious_clues": review_conclusion_table["suspicious_clues"],
         "exclusionary_factors": review_conclusion_table["exclusionary_factors"],
+        "fact_table": fact_table,
+        "clue_table": clue_table,
+        "exclusion_table": exclusion_table,
+        "risk_table": risk_table,
         "preliminary_conclusion": _final_conclusion(top_pair),
         "follow_up_recommendations": review_conclusion_table["recommendations"],
-        "evidence_summary": evidence_grade_table,
+        "audit_opinion": {
+            "opinion_type": "自动审查意见",
+            "main_statement": _final_conclusion(top_pair),
+            "opinion_note": "现有结论系基于文件内容自动形成的复核意见，建议结合原始电子文件、外围关联信息和人工核验进一步确认。",
+        },
+        "evidence_summary": evidence_summary,
         "risk_summary": risk_score_table,
     }
     return report
@@ -303,44 +353,103 @@ def build_formal_report(
 
 def build_formal_report_markdown(report: dict) -> str:
     lines = [
-        "# 正式审查报告",
+        "# 政府采购围串标审查报告",
         "",
-        "## 1. 项目基本信息",
+        "## 一、审查事项",
         "",
-        f"- 案件编号：{report['project_basic_info']['case_id']}",
+        f"案件编号：{report['project_basic_info']['case_id']}",
+        "",
+        f"本次审查围绕 {'、'.join(report['project_basic_info']['supplier_names'])} 等投标供应商提交的投标文件开展，重点核查投标文件之间是否存在异常关联、同源编制、报价协同或者其他疑似围串标线索。",
+        "",
+        "## 二、基本情况",
+        "",
         f"- 生成时间：{report['project_basic_info']['generated_at']}",
-        f"- 投标人：{'、'.join(report['project_basic_info']['supplier_names'])}",
-        "",
-        "## 2. 审查范围",
-        "",
         f"- 招标文件数量：{report['review_scope']['tender_count']}",
         f"- 投标文件数量：{report['review_scope']['bid_count']}",
         f"- 已编目文档数量：{report['review_scope']['document_catalog_count']}",
         "",
-        "## 3. 审查方法",
+        "## 三、文件接收情况",
         "",
+        f"- 招标文件来源：`{report['document_acceptance']['tender_source']}`",
     ]
+    for supplier, source in report["document_acceptance"]["bid_sources"].items():
+        lines.append(f"- {supplier} 投标文件来源：`{source}`")
+    lines.extend(
+        [
+            "",
+            "## 四、审查依据与方法",
+            "",
+        ]
+    )
+    for item in report["review_basis"]:
+        lines.append(f"- {item}")
+    lines.extend([""])
     for item in report["review_method"]:
         lines.append(f"- {item}")
-    lines.extend(["", "## 4. 审查发现", ""])
-    for item in report["review_findings"]:
-        lines.append(f"- {item}")
-    lines.extend(["", "## 5. 可疑线索", ""])
-    for item in report["suspicious_clues"] or ["- 未发现明显可疑线索。"]:
-        if item.startswith("- "):
-            lines.append(item)
-        else:
-            lines.append(f"- {item}")
-    lines.extend(["", "## 6. 排除性因素", ""])
-    for item in report["exclusionary_factors"] or ["- 暂无明确排除性因素。"]:
-        if item.startswith("- "):
-            lines.append(item)
-        else:
-            lines.append(f"- {item}")
-    lines.extend(["", "## 7. 初步结论", "", report["preliminary_conclusion"], "", "## 8. 后续建议", ""])
+    lines.extend(["", "## 五、审查事实表", ""])
+    lines.extend(_render_markdown_table(report["fact_table"], ["序号", "事实内容", "性质"]))
+    lines.extend(["", "## 六、异常线索表", ""])
+    if report["clue_table"]:
+        lines.extend(_render_markdown_table(report["clue_table"], ["序号", "线索内容", "处置建议"]))
+    else:
+        lines.append("未识别到需要重点说明的异常线索。")
+    lines.extend(["", "## 七、排除性因素表", ""])
+    if report["exclusion_table"]:
+        lines.extend(_render_markdown_table(report["exclusion_table"], ["序号", "排除事项", "说明"]))
+    else:
+        lines.append("暂无明确排除性因素。")
+    lines.extend(["", "## 八、风险评分表", ""])
+    lines.extend(
+        _render_markdown_table(
+            report["risk_table"],
+            ["供应商组合", "文件同源分", "报价异常分", "文本相似分", "主体关联分", "授权关联分", "时间轨迹分", "总分", "风险等级"],
+        )
+    )
+    lines.extend(["", "## 九、主要证据摘要", ""])
+    if report["evidence_summary"]:
+        lines.extend(_render_markdown_table(report["evidence_summary"], ["pair", "finding_title", "evidence_grade", "reason"]))
+    else:
+        lines.append("暂无可归集的高价值证据摘要。")
+    lines.extend(
+        [
+            "",
+            "## 十、审查意见",
+            "",
+            report["audit_opinion"]["main_statement"],
+            "",
+            report["audit_opinion"]["opinion_note"],
+            "",
+            "## 十一、后续核查建议",
+            "",
+        ]
+    )
     for item in report["follow_up_recommendations"]:
         lines.append(f"- {item}")
+    lines.extend(
+        [
+            "",
+            "## 十二、说明",
+            "",
+            "本报告为自动审查底稿，结论应结合人工复核、原始电子文件和外围客观证据综合判断。",
+        ]
+    )
     return "\n".join(lines)
+
+
+def _render_markdown_table(rows: list[dict], columns: list[str]) -> list[str]:
+    if not rows:
+        return ["无。"]
+    header = "| " + " | ".join(columns) + " |"
+    divider = "| " + " | ".join(["---"] * len(columns)) + " |"
+    rendered = [header, divider]
+    for row in rows:
+        rendered.append("| " + " | ".join(_sanitize_cell(row.get(column, "")) for column in columns) + " |")
+    return rendered
+
+
+def _sanitize_cell(value: object) -> str:
+    text = str(value)
+    return text.replace("\n", "<br>").replace("|", "\\|")
 
 
 def build_structure_similarity_table(signals: list[ExtractedSignals]) -> list[dict]:
