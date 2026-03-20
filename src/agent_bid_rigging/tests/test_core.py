@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
+from agent_bid_rigging.core.artifacts import classify_document
 from agent_bid_rigging.utils.file_loader import load_document
 
 
@@ -150,6 +151,11 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     assert opinion["mode"] == "template"
     assert "围串标审查意见书" in opinion["document"]
     assert "`alpha` 与 `beta`" in opinion["document"]
+
+
+def test_document_classifier_tags_known_document() -> None:
+    category = classify_document("开标一览表.pdf", "开标一览表 投标总报价（元）")
+    assert category == "开标一览表"
 
 
 def load_document_from_text(name: str, role: str, text: str):

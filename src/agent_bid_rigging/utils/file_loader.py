@@ -108,6 +108,7 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
                 "suffix": suffix,
                 "parser": parser,
                 "chars": len(normalized),
+                "title": _derive_title(normalized, display_name),
             }
         )
 
@@ -228,3 +229,11 @@ def _looks_readable(text: str) -> bool:
         if char.isalnum() or "\u4e00" <= char <= "\u9fff" or char in "-_().（）[]【】":
             readable += 1
     return total > 0 and readable / total >= 0.65
+
+
+def _derive_title(text: str, fallback: str) -> str:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:120]
+    return fallback

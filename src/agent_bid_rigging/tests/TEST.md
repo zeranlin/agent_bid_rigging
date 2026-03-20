@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 8 unit tests planned
+- `test_core.py`: 9 unit tests planned
 - `test_full_e2e.py`: 3 end-to-end tests planned
 
 ## Unit Test Plan
@@ -23,6 +23,10 @@
 - `core/opinion.py`
   - generate deterministic review opinion from structured report
   - edge cases: high-risk pair should be called out in the conclusion
+  - expected tests: 1
+- `core/artifacts.py`
+  - classify known document types and support structured artifact generation
+  - edge cases: unknown vs known document labels
   - expected tests: 1
 
 ## E2E Test Plan

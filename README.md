@@ -64,6 +64,13 @@ agent-bid-rigging analyze \
 The command creates a timestamped directory under `runs/` containing:
 
 - `manifest.json`
+- `case_manifest.json`
+- `source_file_index.json`
+- `extracted_file_index.json`
+- `document_catalog.json`
+- `entity_field_table.json`
+- `price_analysis_table.json`
+- `review_conclusion_table.json`
 - `normalized/*.json`
 - `pairwise_report.json`
 - `summary.md`

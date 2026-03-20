@@ -58,10 +58,21 @@ class TestCLIEndToEnd:
         payload = json.loads(result.stdout)
         assert payload["pairwise_assessments"]
         assert (out_dir / "manifest.json").exists()
+        assert (out_dir / "case_manifest.json").exists()
+        assert (out_dir / "source_file_index.json").exists()
+        assert (out_dir / "extracted_file_index.json").exists()
+        assert (out_dir / "document_catalog.json").exists()
+        assert (out_dir / "entity_field_table.json").exists()
+        assert (out_dir / "price_analysis_table.json").exists()
+        assert (out_dir / "review_conclusion_table.json").exists()
         assert (out_dir / "pairwise_report.json").exists()
         assert (out_dir / "summary.md").exists()
         assert (out_dir / "opinion.json").exists()
         assert (out_dir / "opinion.md").exists()
+        source_index = json.loads((out_dir / "source_file_index.json").read_text(encoding="utf-8"))
+        assert len(source_index["rows"]) == 4
+        entity_table = json.loads((out_dir / "entity_field_table.json").read_text(encoding="utf-8"))
+        assert any(row["field_name"] == "bid_amounts" for row in entity_table["rows"])
 
     def test_analyze_accepts_zip_archives(self, tmp_path: Path) -> None:
         tender_dir = tmp_path / "tender_dir"
@@ -114,3 +125,4 @@ class TestCLIEndToEnd:
         payload = json.loads(result.stdout)
         assert payload["pairwise_assessments"][0]["supplier_a"] == "alpha"
         assert (out_dir / "summary.md").exists()
+        assert (out_dir / "case_manifest.json").exists()

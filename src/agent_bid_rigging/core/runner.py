@@ -4,6 +4,15 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from agent_bid_rigging.core.artifacts import (
+    build_case_manifest,
+    build_document_catalog,
+    build_entity_field_table,
+    build_extracted_file_index,
+    build_price_analysis_table,
+    build_review_conclusion_table,
+    build_source_file_index,
+)
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
@@ -18,7 +27,9 @@ def run_review(
     label: str | None = None,
     opinion_mode: str = "auto",
 ) -> dict:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    generated_at = now.isoformat(timespec="seconds")
     run_name = label or f"review_{timestamp}"
     base_dir = Path(output_dir) if output_dir else Path("runs") / run_name
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -36,25 +47,48 @@ def run_review(
         _write_json(normalized_dir / f"{supplier_name}.json", signals.to_dict())
 
     assessments = assess_pairs(bid_signals)
+    assessment_dicts = [assessment.to_dict() for assessment in assessments]
+
+    case_manifest = build_case_manifest(
+        run_name=run_name,
+        generated_at=generated_at,
+        tender_path=tender_path,
+        bids=bids,
+        output_dir=base_dir,
+        opinion_mode=opinion_mode,
+    )
+    source_file_index = build_source_file_index(tender_path, bids, generated_at)
+    extracted_file_index = build_extracted_file_index(bid_signals)
+    document_catalog = build_document_catalog(bid_signals)
+    entity_field_table = build_entity_field_table(bid_signals)
+    price_analysis_table = build_price_analysis_table(bid_signals)
+    review_conclusion_table = build_review_conclusion_table(assessments)
 
     report = {
         "run_name": run_name,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": generated_at,
         "tender": tender_doc.to_dict(),
         "suppliers": list(bids.keys()),
         "normalized_documents": [signal.to_dict() for signal in bid_signals],
-        "pairwise_assessments": [assessment.to_dict() for assessment in assessments],
+        "pairwise_assessments": assessment_dicts,
+        "case_manifest": case_manifest,
+        "source_file_index": source_file_index,
+        "extracted_file_index": extracted_file_index,
+        "document_catalog": document_catalog,
+        "entity_field_table": entity_field_table,
+        "price_analysis_table": price_analysis_table,
+        "review_conclusion_table": review_conclusion_table,
     }
     opinion = generate_review_opinion(report, opinion_mode=opinion_mode)
-    manifest = {
-        "run_name": run_name,
-        "output_dir": str(base_dir.resolve()),
-        "tender_path": tender_doc.path,
-        "bid_paths": bids,
-        "opinion_mode": opinion["mode"],
-    }
 
-    _write_json(base_dir / "manifest.json", manifest)
+    _write_json(base_dir / "manifest.json", case_manifest)
+    _write_json(base_dir / "case_manifest.json", case_manifest)
+    _write_json(base_dir / "source_file_index.json", {"rows": source_file_index})
+    _write_json(base_dir / "extracted_file_index.json", {"rows": extracted_file_index})
+    _write_json(base_dir / "document_catalog.json", {"rows": document_catalog})
+    _write_json(base_dir / "entity_field_table.json", {"rows": entity_field_table})
+    _write_json(base_dir / "price_analysis_table.json", {"rows": price_analysis_table})
+    _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
     _write_json(base_dir / "pairwise_report.json", report)
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
     _write_json(base_dir / "opinion.json", opinion)
