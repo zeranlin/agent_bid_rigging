@@ -7,7 +7,7 @@ from pathlib import Path
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
-from agent_bid_rigging.core.artifacts import classify_document
+from agent_bid_rigging.core.artifacts import build_duplicate_detection_table, classify_document
 from agent_bid_rigging.utils.file_loader import load_document
 
 
@@ -156,6 +156,23 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
 def test_document_classifier_tags_known_document() -> None:
     category = classify_document("开标一览表.pdf", "开标一览表 投标总报价（元）")
     assert category == "开标一览表"
+
+
+def test_duplicate_detection_table_marks_same_component_hash() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    baseline = build_tender_baseline(tender)
+    text = "授权书\n授权产品：设备A\n授权期限：一年"
+    left = extract_signals(load_document_from_text("alpha", "bid", text), tender_lines=baseline)
+    right = extract_signals(load_document_from_text("beta", "bid", text), tender_lines=baseline)
+    left.document.metadata["components"] = [
+        {"display_name": "授权书A", "sha256": "samehash", "relative_path": "a.txt", "size_bytes": 10}
+    ]
+    right.document.metadata["components"] = [
+        {"display_name": "授权书B", "sha256": "samehash", "relative_path": "b.txt", "size_bytes": 10}
+    ]
+    table = build_duplicate_detection_table([left, right])
+    assert table[0]["duplicate_count"] == 1
+    assert table[0]["classification"] == "完全一致"
 
 
 def load_document_from_text(name: str, role: str, text: str):

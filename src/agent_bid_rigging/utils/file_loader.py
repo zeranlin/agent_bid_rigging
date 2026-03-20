@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 import zipfile
+import hashlib
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -105,10 +106,14 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
                 "index": index,
                 "display_name": display_name,
                 "relative_path": _safe_relpath(path, root),
+                "source_path": str(path),
                 "suffix": suffix,
                 "parser": parser,
                 "chars": len(normalized),
                 "title": _derive_title(normalized, display_name),
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256_bytes(path.read_bytes()),
+                "modified_at": _safe_iso_mtime(path),
             }
         )
 
@@ -237,3 +242,11 @@ def _derive_title(text: str, fallback: str) -> str:
         if stripped:
             return stripped[:120]
     return fallback
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _safe_iso_mtime(path: Path) -> str:
+    return str(path.stat().st_mtime)

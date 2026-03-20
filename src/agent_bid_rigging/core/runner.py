@@ -5,13 +5,21 @@ from datetime import datetime
 from pathlib import Path
 
 from agent_bid_rigging.core.artifacts import (
+    build_authorization_chain_table,
     build_case_manifest,
     build_document_catalog,
+    build_duplicate_detection_table,
     build_entity_field_table,
     build_extracted_file_index,
+    build_file_fingerprint_table,
     build_price_analysis_table,
     build_review_conclusion_table,
     build_source_file_index,
+    build_structure_similarity_table,
+    build_shared_error_table,
+    build_text_similarity_table,
+    build_timeline_table,
+    build_license_match_table,
 )
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.opinion import generate_review_opinion
@@ -62,6 +70,14 @@ def run_review(
     document_catalog = build_document_catalog(bid_signals)
     entity_field_table = build_entity_field_table(bid_signals)
     price_analysis_table = build_price_analysis_table(bid_signals)
+    structure_similarity_table = build_structure_similarity_table(bid_signals)
+    file_fingerprint_table = build_file_fingerprint_table(bid_signals)
+    duplicate_detection_table = build_duplicate_detection_table(bid_signals)
+    text_similarity_table = build_text_similarity_table(bid_signals)
+    shared_error_table = build_shared_error_table(bid_signals)
+    authorization_chain_table = build_authorization_chain_table(bid_signals)
+    license_match_table = build_license_match_table(bid_signals)
+    timeline_table = build_timeline_table(bid_signals)
     review_conclusion_table = build_review_conclusion_table(assessments)
 
     report = {
@@ -77,6 +93,14 @@ def run_review(
         "document_catalog": document_catalog,
         "entity_field_table": entity_field_table,
         "price_analysis_table": price_analysis_table,
+        "structure_similarity_table": structure_similarity_table,
+        "file_fingerprint_table": file_fingerprint_table,
+        "duplicate_detection_table": duplicate_detection_table,
+        "text_similarity_table": text_similarity_table,
+        "shared_error_table": shared_error_table,
+        "authorization_chain_table": authorization_chain_table,
+        "license_match_table": license_match_table,
+        "timeline_table": timeline_table,
         "review_conclusion_table": review_conclusion_table,
     }
     opinion = generate_review_opinion(report, opinion_mode=opinion_mode)
@@ -88,6 +112,14 @@ def run_review(
     _write_json(base_dir / "document_catalog.json", {"rows": document_catalog})
     _write_json(base_dir / "entity_field_table.json", {"rows": entity_field_table})
     _write_json(base_dir / "price_analysis_table.json", {"rows": price_analysis_table})
+    _write_json(base_dir / "structure_similarity_table.json", {"rows": structure_similarity_table})
+    _write_json(base_dir / "file_fingerprint_table.json", {"rows": file_fingerprint_table})
+    _write_json(base_dir / "duplicate_detection_table.json", {"rows": duplicate_detection_table})
+    _write_json(base_dir / "text_similarity_table.json", {"rows": text_similarity_table})
+    _write_json(base_dir / "shared_error_table.json", {"rows": shared_error_table})
+    _write_json(base_dir / "authorization_chain_table.json", {"rows": authorization_chain_table})
+    _write_json(base_dir / "license_match_table.json", {"rows": license_match_table})
+    _write_json(base_dir / "timeline_table.json", {"rows": timeline_table})
     _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
     _write_json(base_dir / "pairwise_report.json", report)
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")

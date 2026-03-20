@@ -70,6 +70,14 @@ The command creates a timestamped directory under `runs/` containing:
 - `document_catalog.json`
 - `entity_field_table.json`
 - `price_analysis_table.json`
+- `structure_similarity_table.json`
+- `file_fingerprint_table.json`
+- `duplicate_detection_table.json`
+- `text_similarity_table.json`
+- `shared_error_table.json`
+- `authorization_chain_table.json`
+- `license_match_table.json`
+- `timeline_table.json`
 - `review_conclusion_table.json`
 - `normalized/*.json`
 - `pairwise_report.json`
