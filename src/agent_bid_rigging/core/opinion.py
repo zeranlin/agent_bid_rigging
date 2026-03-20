@@ -5,12 +5,18 @@ from datetime import datetime
 from agent_bid_rigging.utils.openai_client import OpenAIResponsesClient
 
 
-def generate_review_opinion(report: dict, opinion_mode: str = "auto") -> dict:
+def generate_review_opinion(report: dict, opinion_mode: str = "auto", llm_review_layers: dict | None = None) -> dict:
     selected_mode = opinion_mode
     if opinion_mode == "auto":
         selected_mode = "llm" if OpenAIResponsesClient.is_configured() else "template"
 
     if selected_mode == "llm":
+        if llm_review_layers and llm_review_layers.get("opinion_document"):
+            return {
+                "mode": llm_review_layers.get("mode", "llm"),
+                "generated_at": llm_review_layers.get("generated_at", datetime.now().isoformat(timespec="seconds")),
+                "document": llm_review_layers["opinion_document"],
+            }
         try:
             document = _generate_llm_opinion(report)
             return {
