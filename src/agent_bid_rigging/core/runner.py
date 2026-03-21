@@ -221,6 +221,14 @@ def run_review(
     _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
     _write_json(base_dir / "formal_report.json", formal_report)
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
+    _write_json(
+        base_dir / "text_overlap_evidence_appendix.json",
+        {"rows": formal_report.get("text_overlap_appendix", [])},
+    )
+    (base_dir / "text_overlap_evidence_appendix.md").write_text(
+        _build_text_overlap_appendix_markdown(formal_report.get("text_overlap_appendix", [])),
+        encoding="utf-8",
+    )
     _write_json(base_dir / "formal_report.rule.json", formal_report)
     (base_dir / "formal_report.rule.md").write_text(rule_formal_report_markdown, encoding="utf-8")
     (base_dir / "formal_report.md").write_text(rule_formal_report_markdown, encoding="utf-8")
@@ -414,6 +422,21 @@ def _build_summary(report: dict) -> str:
             lines.append(f"- {finding['title']} [+{finding['weight']}]: {evidence}")
         lines.append("")
     return "\n".join(lines)
+
+
+def _build_text_overlap_appendix_markdown(rows: list[dict]) -> str:
+    lines = ["# 文本重合证据附表", ""]
+    if not rows:
+        lines.append("暂无文本重合证据。")
+        return "\n".join(lines)
+    for index, row in enumerate(rows, start=1):
+        lines.append(f"## {index}. {row['pair']}")
+        lines.append(f"- 线索名称：{row['finding_title']}")
+        lines.append(f"- 证据判断：{row['grade_text']}（{row['evidence_grade']}级）")
+        for snippet in row.get("snippets", []):
+            lines.append(f"- 原文片段：`{snippet}`")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def _overall_conclusion(assessments: list[dict]) -> str:

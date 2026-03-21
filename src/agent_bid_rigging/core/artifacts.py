@@ -459,7 +459,13 @@ def build_formal_report(
         )
     )
     supplier_name_map = {profile["supplier"]: profile["full_name"] for profile in supplier_profiles}
-    structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table, supplier_name_map)
+    text_overlap_appendix = _build_text_overlap_appendix(evidence_grade_table, supplier_name_map)
+    structure_summary = _build_structure_summary(
+        structure_similarity_table or [],
+        risk_score_table,
+        evidence_grade_table,
+        supplier_name_map,
+    )
     suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table, supplier_name_map)
     exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table, supplier_name_map)
     further_checks = _build_further_checks(top_pair, supplier_name_map)
@@ -571,6 +577,7 @@ def build_formal_report(
             "opinion_note": "现有结论系基于文件内容自动形成的复核意见，建议结合原始电子文件、外围关联信息和人工核验进一步确认。",
         },
         "evidence_summary": evidence_summary,
+        "text_overlap_appendix": text_overlap_appendix,
         "risk_summary": risk_score_table,
     }
     return report
@@ -638,6 +645,15 @@ def build_formal_report_markdown(report: dict) -> str:
     )
     for index, item in enumerate(report["further_checks"], start=1):
         lines.append(f"{index}. {item}")
+    if report.get("text_overlap_appendix"):
+        lines.extend(["", "**附：文本重合证据附表**", ""])
+        for index, item in enumerate(report["text_overlap_appendix"], start=1):
+            lines.append(f"{index}. 供应商组合：{item['pair']}")
+            lines.append(f"   线索名称：{item['finding_title']}")
+            lines.append(f"   证据判断：{item['grade_text']}（{item['evidence_grade']}级）")
+            for snippet in item["snippets"]:
+                lines.append(f"   原文片段：{snippet}")
+            lines.append("")
     lines.extend(
         [
             "",
@@ -737,6 +753,7 @@ def _build_price_opinion(profiles: list[dict]) -> str:
 def _build_structure_summary(
     structure_similarity_table: list[dict],
     risk_score_table: list[dict],
+    evidence_grade_table: list[dict],
     supplier_name_map: dict[str, str] | None = None,
 ) -> dict:
     if not structure_similarity_table:
@@ -751,9 +768,17 @@ def _build_structure_summary(
         "该类结构相似性在电子采购平台标准模板场景下具有一定普遍性，应结合非模板文本和主体信息综合判断。",
     ]
     for row in high_pairs[:3]:
+        pair_key = f"{row['supplier_a']} 与 {row['supplier_b']}"
         points.append(
             f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}存在非模板文本重合线索，相关内容相似程度较高。"
         )
+        snippets = _text_overlap_snippets_for_pair(pair_key, evidence_grade_table)
+        if snippets:
+            points.append(
+                f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}重合片段示例："
+                + "；".join(f"`{snippet}`" for snippet in snippets[:2])
+                + "。"
+            )
     opinion = "投标文件框架相似具有模板化解释空间，但已出现的非模板文本重合线索应列入进一步复核范围。"
     return {"points": points, "opinion": opinion}
 
@@ -827,6 +852,51 @@ def _build_suspicious_points(
                     f"{pair_label}存在“{top_evidence['finding_title']}”证据，证据等级为 `{top_evidence['evidence_grade']}`。"
                 )
     return points
+
+
+def _build_text_overlap_appendix(
+    evidence_grade_table: list[dict],
+    supplier_name_map: dict[str, str] | None = None,
+) -> list[dict]:
+    rows: list[dict] = []
+    for item in evidence_grade_table:
+        if "文本重合" not in item.get("finding_title", ""):
+            continue
+        rows.append(
+            {
+                "pair": _replace_supplier_names(item["pair"], supplier_name_map),
+                "finding_title": item["finding_title"],
+                "evidence_grade": item["evidence_grade"],
+                "grade_text": _evidence_reason_to_plain_text(item.get("reason", "")),
+                "snippets": _extract_overlap_snippets(item.get("evidence", [])),
+            }
+        )
+    return rows
+
+
+def _text_overlap_snippets_for_pair(pair: str, evidence_grade_table: list[dict]) -> list[str]:
+    for item in evidence_grade_table:
+        if item.get("pair") == pair and "文本重合" in item.get("finding_title", ""):
+            return _extract_overlap_snippets(item.get("evidence", []))
+    return []
+
+
+def _extract_overlap_snippets(evidence_items: list[str]) -> list[str]:
+    snippets: list[str] = []
+    for evidence in evidence_items:
+        if "重合行:" in evidence:
+            snippet = evidence.split("重合行:", 1)[1].strip()
+        else:
+            snippet = evidence.strip()
+        if snippet:
+            snippets.append(snippet)
+    return snippets[:5]
+
+
+def _evidence_reason_to_plain_text(reason: str) -> str:
+    if not reason:
+        return "需要结合其他证据综合判断"
+    return reason.rstrip("。")
 
 
 def _build_exclusion_points(

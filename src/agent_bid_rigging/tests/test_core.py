@@ -299,8 +299,20 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
         {"supplier_a": "华康", "supplier_b": "唯美", "total_score": 0, "risk_level": "low", "technical_text_score": 0, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
     ]
     evidence_rows = [
-        {"pair": "恒禾 与 华康", "finding_title": "仅两家共享的非模板文本重合", "evidence_grade": "B"},
-        {"pair": "恒禾 与 唯美", "finding_title": "仅两家共享的非模板文本重合", "evidence_grade": "B"},
+        {
+            "pair": "恒禾 与 华康",
+            "finding_title": "仅两家共享的非模板文本重合",
+            "evidence_grade": "B",
+            "reason": "较强异常线索，需要结合其他证据判断。",
+            "evidence": ["重合行: 培训特点是目的性、针对性、实效性和创新性："],
+        },
+        {
+            "pair": "恒禾 与 唯美",
+            "finding_title": "仅两家共享的非模板文本重合",
+            "evidence_grade": "B",
+            "reason": "较强异常线索，需要结合其他证据判断。",
+            "evidence": ["重合行: 整理设备试运转中的情况(包括故障排除)记录；"],
+        },
     ]
     report = build_formal_report(
         case_manifest={
@@ -324,6 +336,11 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
         },
         evidence_grade_table=evidence_rows,
         risk_score_table=risk_rows,
+        structure_similarity_table=[
+            {"supplier_a": "恒禾", "supplier_b": "华康", "category_overlap_ratio": 0.66},
+            {"supplier_a": "恒禾", "supplier_b": "唯美", "category_overlap_ratio": 0.66},
+            {"supplier_a": "华康", "supplier_b": "唯美", "category_overlap_ratio": 0.66},
+        ],
         timeline_table=[
             {"supplier": "恒禾", "summary": "未见明显集中生成特征"},
             {"supplier": "华康", "summary": "未见明显集中生成特征"},
@@ -343,6 +360,9 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "medium 风险线索" not in markdown
     assert "总分为" not in markdown
     assert "审查日期：2026-03-21 10:00:00" in markdown
+    assert "重合片段示例" in markdown
+    assert "培训特点是目的性、针对性、实效性和创新性" in markdown
+    assert "附：文本重合证据附表" in markdown
 
 
 def test_risk_score_table_matches_pairwise_assessment() -> None:

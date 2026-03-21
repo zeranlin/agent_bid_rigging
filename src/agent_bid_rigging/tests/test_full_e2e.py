@@ -77,6 +77,8 @@ class TestCLIEndToEnd:
         assert (out_dir / "review_conclusion_table.json").exists()
         assert (out_dir / "formal_report.json").exists()
         assert (out_dir / "formal_report.md").exists()
+        assert (out_dir / "text_overlap_evidence_appendix.json").exists()
+        assert (out_dir / "text_overlap_evidence_appendix.md").exists()
         assert (out_dir / "formal_report.rule.json").exists()
         assert (out_dir / "formal_report.rule.md").exists()
         assert (out_dir / "pairwise_report.json").exists()
