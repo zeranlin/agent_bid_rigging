@@ -16,7 +16,7 @@ class StubBackend(QwenOcrBackend):
 
         self.client = StubClient()
 
-    def analyze_image(self, image, context):  # noqa: ANN001, D401
+    def analyze_image(self, image, context, request=None):  # noqa: ANN001, D401
         return OcrImageResult(
             image=image,
             doc_type="license",

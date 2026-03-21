@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from agent_bid_rigging.capabilities.base import CapabilityContext
+from agent_bid_rigging.capabilities.ocr.contracts import OcrRequest
 from agent_bid_rigging.capabilities.ocr.prompts import OCR_SYSTEM_PROMPT, build_ocr_user_prompt
 from agent_bid_rigging.capabilities.ocr.schemas import OcrImageRecord, OcrImageResult
 from agent_bid_rigging.utils.openai_client import OpenAIResponsesClient
@@ -14,11 +15,17 @@ class QwenOcrBackend:
     def __init__(self, client: OpenAIResponsesClient | None = None) -> None:
         self.client = client or OpenAIResponsesClient.from_env()
 
-    def analyze_image(self, image: OcrImageRecord, context: CapabilityContext) -> OcrImageResult:
+    def analyze_image(
+        self,
+        image: OcrImageRecord,
+        context: CapabilityContext,
+        request: OcrRequest | None = None,
+    ) -> OcrImageResult:
         user_prompt = build_ocr_user_prompt(
             source_label=context.source_path or image.stored_path,
             page_index=image.page_index,
             image_index=image.image_index,
+            request=request,
         )
         response_text = self.client.generate_chat_vision_text(
             system_prompt=OCR_SYSTEM_PROMPT,

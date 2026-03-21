@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 from agent_bid_rigging.capabilities.base import CapabilityContext, CapabilityResult, ReviewCapability
+from agent_bid_rigging.capabilities.ocr.contracts import OcrRequest, OcrResponse
 from agent_bid_rigging.capabilities.ocr.pdf_images import build_image_record, extract_pdf_images
 from agent_bid_rigging.capabilities.ocr.qwen_backend import QwenOcrBackend
 from agent_bid_rigging.capabilities.ocr.schemas import OcrImageResult
@@ -24,13 +25,14 @@ class OcrCapability(ReviewCapability):
         source_path = kwargs.get("source_path") or context.source_path
         if not source_path:
             raise ValueError("source_path is required for OCR capability")
+        request = OcrRequest.from_input(kwargs.get("request"))
 
         source = Path(str(source_path)).expanduser().resolve()
         output_dir = Path(str(kwargs.get("output_dir") or source.parent / f"{source.stem}_ocr")).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         warnings: list[str] = []
-        sources = _discover_sources(source)
+        sources = _discover_sources(source, request=request)
         images = []
         global_index = 0
         for source_item in sources:
@@ -39,22 +41,32 @@ class OcrCapability(ReviewCapability):
                 global_index += 1
                 image.image_index = global_index
             images.extend(source_images)
+            if request.max_images is not None and len(images) >= request.max_images:
+                images = images[: request.max_images]
+                warnings.append("OCR image collection reached max_images limit.")
+                break
         if not images:
             warnings.append("No embedded images were extracted from the source document.")
 
         image_results: list[OcrImageResult] = []
         for image in images:
-            image_results.append(self.backend.analyze_image(image, context))
+            try:
+                image_results.append(self.backend.analyze_image(image, context, request=request))
+            except TypeError:
+                image_results.append(self.backend.analyze_image(image, context))
 
-        payload = {
-            "source_path": str(source),
-            "output_dir": str(output_dir),
-            "source_count": len(sources),
-            "sources": [str(item) for item in sources],
-            "image_count": len(images),
-            "images": [image.to_dict() for image in images],
-            "image_results": [result.to_dict() for result in image_results],
-        }
+        response = OcrResponse(
+            request=request,
+            source_path=str(source),
+            output_dir=str(output_dir),
+            source_count=len(sources),
+            image_count=len(images),
+            images=images if request.include_images else [],
+            image_results=image_results,
+            warnings=warnings,
+        )
+        payload = response.to_dict()
+        payload["sources"] = [str(item) for item in sources]
         image_index = {"rows": _build_image_index_rows(source, images)}
         image_ocr_table = {"rows": _build_image_ocr_rows(source, image_results)}
         (output_dir / "image_index.json").write_text(json.dumps(image_index, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -137,19 +149,22 @@ def _build_image_ocr_rows(source: Path, image_results: list[OcrImageResult]) -> 
     return rows
 
 
-def _discover_sources(source: Path) -> list[Path]:
+def _discover_sources(source: Path, request: OcrRequest) -> list[Path]:
     if source.is_dir():
-        return [
+        sources = [
             path
             for path in sorted(source.rglob("*"))
-            if path.is_file() and _should_ingest_source(path)
+            if path.is_file() and _should_ingest_source(path, request=request)
         ]
+        if request.max_sources is not None:
+            return sources[: request.max_sources]
+        return sources
     if source.suffix.lower() == ".zip":
         temp_dir = Path(tempfile.mkdtemp(prefix="agent_bid_rigging_ocr_"))
         with zipfile.ZipFile(source) as archive:
             archive.extractall(temp_dir)
-        return _discover_sources(temp_dir)
-    if _should_ingest_source(source):
+        return _discover_sources(temp_dir, request=request)
+    if _should_ingest_source(source, request=request):
         return [source]
     raise ValueError(f"Unsupported OCR source format: {source.suffix}")
 
@@ -163,9 +178,11 @@ def _extract_source_images(source: Path, target_dir: Path) -> list:
     return []
 
 
-def _should_ingest_source(path: Path) -> bool:
+def _should_ingest_source(path: Path, request: OcrRequest) -> bool:
     if path.name.startswith("._"):
         return False
     if "__MACOSX" in path.parts:
+        return False
+    if request.file_hints and not any(hint in str(path) for hint in request.file_hints):
         return False
     return path.suffix.lower() in OCR_DISCOVERY_SUFFIXES
