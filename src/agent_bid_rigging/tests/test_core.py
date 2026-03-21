@@ -161,6 +161,77 @@ def test_pairwise_scoring_accepts_review_facts() -> None:
     assert assessment.risk_score >= 80
 
 
+def test_pairwise_scoring_uses_new_review_facts_identity_and_authorization_fields() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：100000"))
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/alpha.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权厂家：测试厂家",
+            "fields": {
+                "authorized_representative": "李四",
+                "unified_social_credit_code": "91150105MA0ABCDE1X",
+                "authorized_manufacturer": "测试厂家",
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
+            },
+            "confidence": 0.95,
+        },
+        {
+            "supplier": "beta",
+            "source_path": "/tmp/beta.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权厂家：测试厂家",
+            "fields": {
+                "authorized_representative": "李四",
+                "unified_social_credit_code": "91150105MA0ABCDE1X",
+                "authorized_manufacturer": "测试厂家",
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
+            },
+            "confidence": 0.95,
+        },
+    ]
+    review_facts = build_review_facts(tender, [left, right], [], ocr_rows)
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+    assert "统一社会信用代码重合" in titles
+    assert "授权代表信息重合" in titles
+    assert "授权厂家重合" in titles
+    assert "授权方重合" in titles
+    assert "授权时间重合" in titles
+
+
+def test_pairwise_scoring_uses_pricing_rows_from_review_facts() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    review_facts.suppliers[0].pricing_rows.extend(
+        [
+            {"value": "成品软件=1000000.00"},
+            {"value": "定制开发=900000.00"},
+            {"value": "系统实施报价=100000.00"},
+        ]
+    )
+    review_facts.suppliers[1].pricing_rows.extend(
+        [
+            {"value": "成品软件=1000000.00"},
+            {"value": "定制开发=900000.00"},
+            {"value": "系统实施报价=100000.00"},
+        ]
+    )
+    assessment = assess_pairs(review_facts)[0]
+    assert any(finding.title == "分项报价结构高度一致" for finding in assessment.findings)
+
+
 def test_signature_noise_does_not_create_high_risk() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：保洁服务")
     baseline = build_tender_baseline(tender)

@@ -401,7 +401,7 @@ def build_risk_score_table(
         pricing = _pricing_score(assessment)
         entity = _entity_score(assessment)
         text_score = _text_similarity_score(assessment)
-        authorization = _finding_weight(assessment, {"授权链重合", "授权材料异常一致"})
+        authorization = _finding_weight(assessment, {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合"})
         timeline = _finding_weight(assessment, {"时间轨迹异常接近", "创建修改时间高度重合"})
         total = assessment.risk_score
 
@@ -1536,13 +1536,19 @@ def _pricing_score(assessment: PairwiseAssessment) -> int:
             return 18
         if finding.title == "投标报价较为接近":
             return 10
+        if finding.title == "分项报价结构高度一致":
+            return 18
+        if finding.title == "分项报价结构相似":
+            return 12
+        if finding.title == "分项报价单项重合":
+            return 6
     return 0
 
 
 def _entity_score(assessment: PairwiseAssessment) -> int:
     score = 0
     for finding in assessment.findings:
-        if finding.title in {"联系人电话重合", "邮箱重合", "银行账号重合", "法定代表人信息重合", "地址信息重合"}:
+        if finding.title in {"统一社会信用代码重合", "联系人电话重合", "邮箱重合", "银行账号重合", "法定代表人信息重合", "授权代表信息重合", "地址信息重合"}:
             score += min(10, finding.weight)
     return min(30, score)
 

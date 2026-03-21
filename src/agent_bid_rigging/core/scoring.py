@@ -85,6 +85,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
     for left, right in combinations(suppliers, 2):
         findings: list[PairwiseFinding] = []
 
+        findings.extend(_shared_field_findings("统一社会信用代码重合", 40, _unified_social_credit_codes(left), _unified_social_credit_codes(right)))
         findings.extend(_shared_field_findings("联系人电话重合", 30, _phones(left), _phones(right)))
         findings.extend(_shared_field_findings("邮箱重合", 25, _emails(left), _emails(right)))
         findings.extend(_shared_field_findings("银行账号重合", 35, _bank_accounts(left), _bank_accounts(right)))
@@ -96,8 +97,18 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
                 _legal_representatives(right),
             )
         )
+        findings.extend(
+            _shared_field_findings(
+                "授权代表信息重合",
+                20,
+                _authorized_representatives(left),
+                _authorized_representatives(right),
+            )
+        )
         findings.extend(_shared_field_findings("地址信息重合", 20, _addresses(left), _addresses(right)))
         findings.extend(_price_findings(left, right))
+        findings.extend(_pricing_row_findings(left, right))
+        findings.extend(_authorization_findings(left, right))
         findings.extend(_pair_only_line_findings(left, right, global_line_counts))
 
         score = sum(finding.weight for finding in findings)
@@ -206,6 +217,60 @@ def _pair_only_line_findings(
             ],
         )
     ]
+
+
+def _pricing_row_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
+    left_rows = _pricing_rows(left)
+    right_rows = _pricing_rows(right)
+    overlap = sorted(set(left_rows) & set(right_rows))
+    if not overlap:
+        return []
+
+    if len(overlap) >= 3:
+        title = "分项报价结构高度一致"
+        weight = 20
+    elif len(overlap) >= 2:
+        title = "分项报价结构相似"
+        weight = 12
+    else:
+        title = "分项报价单项重合"
+        weight = 6
+    return [
+        PairwiseFinding(
+            title=title,
+            weight=weight,
+            evidence=[f"共享报价行: {value}" for value in overlap[:5]],
+        )
+    ]
+
+
+def _authorization_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
+    findings: list[PairwiseFinding] = []
+    findings.extend(
+        _shared_field_findings(
+            "授权厂家重合",
+            18,
+            _authorized_manufacturers(left),
+            _authorized_manufacturers(right),
+        )
+    )
+    findings.extend(
+        _shared_field_findings(
+            "授权方重合",
+            15,
+            _authorization_issuers(left),
+            _authorization_issuers(right),
+        )
+    )
+    findings.extend(
+        _shared_field_findings(
+            "授权时间重合",
+            8,
+            _authorization_dates(left),
+            _authorization_dates(right),
+        )
+    )
+    return findings
 
 
 def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
@@ -356,10 +421,22 @@ def _bank_accounts(item: ExtractedSignals | SupplierFacts) -> list[str]:
     return item.bank_accounts
 
 
+def _unified_social_credit_codes(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.unified_social_credit_codes]
+    return []
+
+
 def _legal_representatives(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.legal_representatives]
     return item.legal_representatives
+
+
+def _authorized_representatives(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorized_representatives]
+    return []
 
 
 def _addresses(item: ExtractedSignals | SupplierFacts) -> list[str]:
@@ -378,3 +455,27 @@ def _bid_amounts(item: ExtractedSignals | SupplierFacts) -> list[float]:
                 continue
         return values
     return item.bid_amounts
+
+
+def _pricing_rows(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [str(row.get("value")) for row in item.pricing_rows if row.get("value")]
+    return []
+
+
+def _authorized_manufacturers(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorized_manufacturers]
+    return []
+
+
+def _authorization_issuers(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorization_issuers]
+    return []
+
+
+def _authorization_dates(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorization_dates]
+    return []
