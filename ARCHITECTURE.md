@@ -75,6 +75,7 @@ We mirror that pattern in a domain-specific review loop.
 - Agent-readable artifacts: outputs must be easy for a later agent run to resume from.
 - Extensible backends: document parsing and scoring rules are isolated modules.
 - Separate atomic capabilities from business judgment so future tools do not accumulate inside `core/`.
+- Business judgment first: judgment dimensions should be defined before expanding facts, strategy, OCR, or LLM usage.
 
 ## Future extensions
 
