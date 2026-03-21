@@ -105,6 +105,7 @@ Environment variables:
 - `OPENAI_TIMEOUT`: optional request timeout in seconds, default `1800`
 - `OPENAI_REASONING_EFFORT`: optional reasoning effort override, for example `low`
 - `OPENAI_NO_THINKING`: optional boolean flag for compatible endpoints, set `1` to send `enable_thinking=false`
+- `AGENT_BID_RIGGING_ASYNC_LLM`: optional boolean flag, set `1` only if you want LLM enhancement to continue in the background instead of blocking the main run
 
 Example for a self-hosted OpenAI-compatible endpoint:
 
@@ -120,6 +121,8 @@ agent-bid-rigging analyze \
   --bid B=投标文件B.zip \
   --opinion-mode llm
 ```
+
+By default, when `--opinion-mode llm` is enabled, the harness waits for the full LLM review chain to finish before considering the run complete. This is the recommended setting for slow local models. If you explicitly want a non-blocking run that writes the rule-based artifacts first and lets LLM enhancement continue in the background, set `AGENT_BID_RIGGING_ASYNC_LLM=1`.
 
 If `OPENAI_BASE_URL` ends with `/v1`, the harness automatically appends `/responses`.
 

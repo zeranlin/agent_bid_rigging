@@ -348,7 +348,7 @@ def _llm_requested(opinion_mode: str) -> bool:
 
 
 def _use_async_llm() -> bool:
-    return not _env_truthy(os.environ.get("AGENT_BID_RIGGING_SYNC_LLM", ""))
+    return _env_truthy(os.environ.get("AGENT_BID_RIGGING_ASYNC_LLM", ""))
 
 
 def _pending_llm_opinion(report: dict) -> dict:
