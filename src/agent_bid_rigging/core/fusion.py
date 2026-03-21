@@ -5,7 +5,6 @@ from pathlib import Path
 
 from agent_bid_rigging.capabilities import CapabilityContext
 from agent_bid_rigging.capabilities.ocr import OcrCapability, OcrRequest
-from agent_bid_rigging.capabilities.ocr.contracts import OCR_MODE_GENERIC, OCR_MODE_TARGETED
 from agent_bid_rigging.models import (
     ExtractedSignals,
     FactObservation,
@@ -13,61 +12,6 @@ from agent_bid_rigging.models import (
     ReviewFacts,
     SupplierFacts,
 )
-
-
-def build_review_ocr_request(role: str, supplier: str | None = None) -> OcrRequest:
-    if role == "tender":
-        return OcrRequest(
-            mode=OCR_MODE_TARGETED,
-            doc_types=["quotation", "registration_certificate", "license"],
-            fields=["manufacturer", "brand", "model", "registration_number", "license_number"],
-            file_hints=["招标文件", "采购需求", "技术参数", "货物需求", "参数"],
-            max_sources=6,
-            max_images=24,
-            metadata={"role": role},
-        )
-
-    return OcrRequest(
-        mode=OCR_MODE_TARGETED,
-        doc_types=[
-            "quotation",
-            "business_license",
-            "authorization_letter",
-            "registration_certificate",
-            "license",
-            "identity_document",
-        ],
-        fields=[
-            "company_name",
-            "legal_representative",
-            "bid_total_amount",
-            "license_number",
-            "registration_number",
-            "manufacturer",
-            "brand",
-            "model",
-            "address",
-            "phone",
-        ],
-        file_hints=[
-            "开标一览表",
-            "分项报价表",
-            "报价表",
-            "投标人基本情况表",
-            "投标人(供应商)应提交的相关证明",
-            "投标人（供应商）应提交的相关证明",
-            "授权委托书",
-            "授权书",
-            "营业执照",
-            "经营许可证",
-            "注册证",
-            "备案凭证",
-            "身份证明",
-        ],
-        max_sources=12,
-        max_images=48,
-        metadata={"role": role, "supplier": supplier},
-    )
 
 
 def run_ocr_collection(

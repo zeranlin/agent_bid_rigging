@@ -32,7 +32,6 @@ from agent_bid_rigging.core.artifacts import (
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.fusion import (
     build_review_facts,
-    build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
     run_ocr_collection,
@@ -40,8 +39,8 @@ from agent_bid_rigging.core.fusion import (
 from agent_bid_rigging.core.llm_review import generate_llm_review_layers
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
+from agent_bid_rigging.core.strategy import build_review_strategy
 from agent_bid_rigging.utils.file_loader import load_document
-from agent_bid_rigging.utils.openai_client import OpenAIResponsesClient
 
 
 def run_review(
@@ -60,16 +59,21 @@ def run_review(
     base_dir.mkdir(parents=True, exist_ok=True)
     normalized_dir = base_dir / "normalized"
     normalized_dir.mkdir(exist_ok=True)
+    strategy = build_review_strategy(
+        opinion_mode=opinion_mode,
+        enable_ocr=enable_ocr,
+        suppliers=list(bids.keys()),
+        async_llm=_use_async_llm(),
+    )
 
     tender_doc = load_document("tender", "tender", tender_path)
     tender_lines = build_tender_baseline(tender_doc)
     bid_signals: list[ExtractedSignals] = []
     image_index_rows: list[dict] = []
     image_ocr_rows: list[dict] = []
-    ocr_capability = OcrCapability() if enable_ocr else None
+    ocr_capability = OcrCapability() if strategy.enable_ocr else None
 
-    if ocr_capability is not None:
-        tender_request = build_review_ocr_request(role="tender")
+    if ocr_capability is not None and strategy.tender_ocr.enabled:
         tender_ocr = run_ocr_collection(
             capability=ocr_capability,
             run_name=run_name,
@@ -77,7 +81,7 @@ def run_review(
             supplier=None,
             source_path=tender_path,
             output_dir=base_dir / "ocr" / "tender",
-            request=tender_request,
+            request=strategy.tender_ocr.request,
         )
         image_index_rows.extend(tender_ocr["image_index_rows"])
         image_ocr_rows.extend(tender_ocr["image_ocr_rows"])
@@ -85,8 +89,8 @@ def run_review(
     for supplier_name, path in bids.items():
         loaded = load_document(supplier_name, "bid", path)
         signals = extract_signals(loaded, tender_lines=tender_lines)
-        if ocr_capability is not None:
-            bid_request = build_review_ocr_request(role="bid", supplier=supplier_name)
+        bid_ocr_plan = strategy.bid_ocr[supplier_name]
+        if ocr_capability is not None and bid_ocr_plan.enabled:
             bid_ocr = run_ocr_collection(
                 capability=ocr_capability,
                 run_name=run_name,
@@ -94,7 +98,7 @@ def run_review(
                 supplier=supplier_name,
                 source_path=path,
                 output_dir=base_dir / "ocr" / supplier_name,
-                request=bid_request,
+                request=bid_ocr_plan.request,
             )
             image_index_rows.extend(bid_ocr["image_index_rows"])
             image_ocr_rows.extend(bid_ocr["image_ocr_rows"])
@@ -161,6 +165,7 @@ def run_review(
         "normalized_documents": [signal.to_dict() for signal in bid_signals],
         "pairwise_assessments": assessment_dicts,
         "case_manifest": case_manifest,
+        "review_strategy": strategy.to_dict(),
         "source_file_index": source_file_index,
         "extracted_file_index": extracted_file_index,
         "document_catalog": document_catalog,
@@ -185,6 +190,7 @@ def run_review(
 
     _write_json(base_dir / "manifest.json", case_manifest)
     _write_json(base_dir / "case_manifest.json", case_manifest)
+    _write_json(base_dir / "review_strategy.json", strategy.to_dict())
     _write_json(base_dir / "source_file_index.json", {"rows": source_file_index})
     _write_json(base_dir / "extracted_file_index.json", {"rows": extracted_file_index})
     _write_json(base_dir / "document_catalog.json", {"rows": document_catalog})
@@ -210,7 +216,7 @@ def run_review(
     (base_dir / "formal_report.rule.md").write_text(rule_formal_report_markdown, encoding="utf-8")
     (base_dir / "formal_report.md").write_text(rule_formal_report_markdown, encoding="utf-8")
 
-    llm_requested = _llm_requested(opinion_mode)
+    llm_requested = strategy.llm.enabled if strategy.llm is not None else False
     llm_status = {
         "requested_mode": opinion_mode,
         "state": "not-requested" if not llm_requested else "running",
@@ -218,7 +224,7 @@ def run_review(
     _write_json(base_dir / "llm_status.json", llm_status)
     _write_json(base_dir / "pairwise_report.json", report)
 
-    if llm_requested and _use_async_llm():
+    if llm_requested and strategy.llm is not None and strategy.llm.async_enabled:
         rule_opinion = generate_review_opinion(report, opinion_mode="template")
         pending_opinion = _pending_llm_opinion(report)
         _write_json(base_dir / "opinion.json", pending_opinion)
@@ -414,14 +420,6 @@ def _overall_conclusion(assessments: list[dict]) -> str:
     return "未发现足以支持明显围串标怀疑的强异常信号。"
 
 
-def _llm_requested(opinion_mode: str) -> bool:
-    if opinion_mode == "llm":
-        return True
-    if opinion_mode == "auto":
-        return OpenAIResponsesClient.is_configured()
-    return False
-
-
 def _use_async_llm() -> bool:
     return _env_truthy(os.environ.get("AGENT_BID_RIGGING_ASYNC_LLM", ""))
 
@@ -472,6 +470,10 @@ def _load_report_context(base_dir: Path) -> dict:
     review_conclusion_table = json.loads((base_dir / "review_conclusion_table.json").read_text(encoding="utf-8"))
     image_index = _read_rows_file(base_dir / "image_index.json")
     image_ocr_table = _read_rows_file(base_dir / "image_ocr_table.json")
+    review_strategy = {}
+    review_strategy_path = base_dir / "review_strategy.json"
+    if review_strategy_path.exists():
+        review_strategy = json.loads(review_strategy_path.read_text(encoding="utf-8"))
     review_facts = {}
     review_facts_path = base_dir / "review_facts.json"
     if review_facts_path.exists():
@@ -488,6 +490,7 @@ def _load_report_context(base_dir: Path) -> dict:
         "normalized_documents": normalized_documents,
         "pairwise_assessments": pairwise_assessments,
         "case_manifest": case_manifest,
+        "review_strategy": review_strategy,
         "risk_score_table": risk_score_table,
         "evidence_grade_table": evidence_grade_table,
         "review_conclusion_table": review_conclusion_table,

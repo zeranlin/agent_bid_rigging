@@ -92,9 +92,11 @@ def test_run_review_with_ocr_writes_tables_and_merges_fields(tmp_path: Path, mon
     assert report["image_index"]
     assert report["image_ocr_table"]
     assert report["review_facts"]["suppliers"]
+    assert report["review_strategy"]["enable_ocr"] is True
     assert (out_dir / "image_index.json").exists()
     assert (out_dir / "image_ocr_table.json").exists()
     assert (out_dir / "review_facts.json").exists()
+    assert (out_dir / "review_strategy.json").exists()
 
     entity_table = json.loads((out_dir / "entity_field_table.json").read_text(encoding="utf-8"))["rows"]
     phone_rows = [row for row in entity_table if row["supplier"] == "alpha" and row["field_name"] == "phones"]

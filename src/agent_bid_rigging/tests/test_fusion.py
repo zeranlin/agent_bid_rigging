@@ -7,10 +7,10 @@ from agent_bid_rigging.core.fusion import (
     append_ocr_entity_rows,
     append_ocr_license_rows,
     build_review_facts,
-    build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
 )
+from agent_bid_rigging.core.strategy import build_review_ocr_request
 from agent_bid_rigging.core.extractor import extract_signals
 from agent_bid_rigging.tests.test_core import load_document_from_text
 
