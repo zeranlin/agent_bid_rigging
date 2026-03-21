@@ -271,6 +271,31 @@ RUN_TEMPLATE = """<!doctype html>
       line-height: 1.9;
       font-size: 15px;
     }
+    .report-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .report-tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 132px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      text-decoration: none;
+      color: var(--accent);
+      background: #fffaf4;
+      font-weight: 700;
+    }
+    .report-tab.active {
+      background: linear-gradient(180deg, #975200 0%, #7c3f00 100%);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 10px 24px rgba(124, 63, 0, 0.18);
+    }
     .section-note {
       margin-top: -4px;
       margin-bottom: 16px;
@@ -330,7 +355,14 @@ RUN_TEMPLATE = """<!doctype html>
     {% if report_content %}
     <section class="panel">
       <h2>报告查看</h2>
-      <p class="section-note">这里直接展示当前 `formal_report.md` 的正文内容，方便发布演示时现场查看。</p>
+      <p class="section-note">这里直接展示正式报告正文，可在页面内切换查看主报告、规则版和 LLM 版。</p>
+      {% if report_variants|length > 1 %}
+      <div class="report-tabs">
+        {% for item in report_variants %}
+        <a class="report-tab {% if item.active %}active{% endif %}" href="{{ item.href }}">{{ item.label }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
       <div class="report-viewer">{{ report_content }}</div>
     </section>
     {% endif %}
@@ -424,8 +456,9 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         )
         if job.get("state") in {"queued", "running", "failed"} and status.get("state") == "not-requested":
             status["state"] = job.get("state")
+        selected_report = request.args.get("report", "main")
+        report_path, report_label = _resolve_report_variant(run_dir, selected_report)
         report_content = None
-        report_path = run_dir / "formal_report.md"
         if report_path.exists():
             report_content = report_path.read_text(encoding="utf-8")
         return render_template_string(
@@ -438,6 +471,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             report_links=_report_links(run_dir),
             artifact_links=_artifact_links(run_id, run_dir),
             report_content=report_content,
+            report_variants=_report_variants(run_id, run_dir, report_label),
             auto_refresh=status.get("state") in {"queued", "running"},
         )
 
@@ -645,6 +679,39 @@ def _artifact_links(run_id: str, run_dir: Path) -> list[dict[str, str]]:
                 }
             )
     return links
+
+
+def _resolve_report_variant(run_dir: Path, selected: str) -> tuple[Path, str]:
+    variant_map = {
+        "main": ("formal_report.md", "主报告"),
+        "rule": ("formal_report.rule.md", "规则版"),
+        "llm": ("formal_report.llm.md", "LLM版"),
+    }
+    filename, label = variant_map.get(selected, variant_map["main"])
+    path = run_dir / filename
+    if path.exists():
+        return path, label
+    return run_dir / "formal_report.md", "主报告"
+
+
+def _report_variants(run_id: str, run_dir: Path, active_label: str) -> list[dict[str, Any]]:
+    variants = [
+        ("主报告", "main", run_dir / "formal_report.md"),
+        ("规则版", "rule", run_dir / "formal_report.rule.md"),
+        ("LLM版", "llm", run_dir / "formal_report.llm.md"),
+    ]
+    rows = []
+    for label, key, path in variants:
+        if not path.exists():
+            continue
+        rows.append(
+            {
+                "label": label,
+                "href": url_for("run_detail", run_id=run_id, report=key),
+                "active": label == active_label,
+            }
+        )
+    return rows
 
 
 def _read_json(path: Path, default: Any) -> Any:
