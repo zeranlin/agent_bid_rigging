@@ -22,6 +22,7 @@ def test_merge_ocr_into_signal_enriches_core_fields() -> None:
             "supplier": "alpha",
             "fields": {
                 "phone": "13800000000",
+                "contact_name": "王小明",
                 "legal_representative": "张三",
                 "address": "呼和浩特市新城区示例路1号",
                 "bid_total_amount": "1888800.00",
@@ -30,6 +31,7 @@ def test_merge_ocr_into_signal_enriches_core_fields() -> None:
     ]
     merge_ocr_into_signal(signal, rows)
     assert signal.phones == ["13800000000"]
+    assert signal.contact_names == ["王小明"]
     assert signal.legal_representatives == ["张三"]
     assert "呼和浩特市新城区示例路1号" in signal.addresses
     assert 1888800.0 in signal.bid_amounts
@@ -61,6 +63,7 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
                 "authorization_date": "2023-12-19",
                 "address": "示例地址",
                 "phone": "13800000000",
+                "contact_name": "王小明",
                 "manufacturer": "测试厂家",
                 "license_number": "LIC-001",
                 "registration_number": "REG-001",
@@ -72,6 +75,7 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
     append_ocr_license_rows(license_rows, ocr_rows)
 
     assert any(row["field_name"] == "phones" for row in entity_rows)
+    assert any(row["field_name"] == "contact_names" and row["values"] == ["王小明"] for row in entity_rows)
     assert any(
         row["field_name"] == "authorized_representatives" and row["values"] == ["李四"]
         for row in entity_rows
@@ -147,6 +151,7 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
                 "authorization_issuer": "测试厂家股份有限公司",
                 "authorization_date": "2023-12-19",
                 "phone": "13800000000",
+                "contact_name": "王小明",
                 "license_number": "LIC-001",
             },
             "confidence": 0.95,
@@ -157,6 +162,7 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].supplier == "alpha"
     assert review_facts.suppliers[0].emails[0].value == "alpha@example.com"
     assert review_facts.suppliers[0].phones[0].value == "13800000000"
+    assert review_facts.suppliers[0].contact_names[0].value == "王小明"
     assert review_facts.suppliers[0].license_numbers[0].value == "LIC-001"
     assert review_facts.suppliers[0].authorized_representatives[0].value == "李四"
     assert review_facts.suppliers[0].unified_social_credit_codes[0].value == "91150105MA0ABCDE1X"

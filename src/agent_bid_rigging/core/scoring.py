@@ -98,6 +98,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
         findings.extend(_shared_field_findings("联系人电话重合", 30, _phones(left), _phones(right)))
         findings.extend(_shared_field_findings("邮箱重合", 25, _emails(left), _emails(right)))
         findings.extend(_shared_field_findings("银行账号重合", 35, _bank_accounts(left), _bank_accounts(right)))
+        findings.extend(_shared_field_findings("联系人姓名重合", 10, _contact_names(left), _contact_names(right)))
         findings.extend(
             _shared_field_findings(
                 "法定代表人信息重合",
@@ -114,7 +115,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
                 _authorized_representatives(right),
             )
         )
-        findings.extend(_shared_field_findings("地址信息重合", 20, _addresses(left), _addresses(right)))
+        findings.extend(_normalized_shared_field_findings("地址信息重合", 20, _addresses(left), _addresses(right)))
         findings.extend(_price_findings(left, right))
         findings.extend(_pricing_row_findings(left, right))
         findings.extend(_authorization_findings(left, right))
@@ -148,6 +149,26 @@ def _shared_field_findings(
             title=title,
             weight=weight,
             evidence=[f"共享字段值: {value}" for value in overlap[:5]],
+        )
+    ]
+
+
+def _normalized_shared_field_findings(
+    title: str,
+    weight: int,
+    left_values: list[str],
+    right_values: list[str],
+) -> list[PairwiseFinding]:
+    left_map = {_normalize_address(value): value for value in left_values if _normalize_address(value)}
+    right_map = {_normalize_address(value): value for value in right_values if _normalize_address(value)}
+    overlap = sorted(set(left_map) & set(right_map))
+    if not overlap:
+        return []
+    return [
+        PairwiseFinding(
+            title=title,
+            weight=weight,
+            evidence=[f"共享字段值: {left_map[value]} / {right_map[value]}" for value in overlap[:5]],
         )
     ]
 
@@ -366,6 +387,7 @@ def _dimension_for_finding(title: str) -> str:
     if title in {
         "统一社会信用代码重合",
         "联系人电话重合",
+        "联系人姓名重合",
         "邮箱重合",
         "银行账号重合",
         "法定代表人信息重合",
@@ -402,6 +424,8 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "medium"
     if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合"}:
         return "medium"
+    if title in {"联系人姓名重合"}:
+        return "weak"
     if "文本重合" in title:
         return "medium" if weight >= 20 else "weak"
     if title in {"投标报价较为接近", "分项报价单项重合"}:
@@ -509,6 +533,12 @@ def _bank_accounts(item: ExtractedSignals | SupplierFacts) -> list[str]:
     return item.bank_accounts
 
 
+def _contact_names(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.contact_names]
+    return getattr(item, "contact_names", [])
+
+
 def _unified_social_credit_codes(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.unified_social_credit_codes]
@@ -531,6 +561,13 @@ def _addresses(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.addresses]
     return item.addresses
+
+
+def _normalize_address(value: str) -> str:
+    normalized = str(value or "").strip()
+    normalized = normalized.replace("（", "(").replace("）", ")")
+    normalized = "".join(normalized.split())
+    return normalized.rstrip("，,。；;：:")
 
 
 def _bid_amounts(item: ExtractedSignals | SupplierFacts) -> list[float]:

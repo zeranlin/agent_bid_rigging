@@ -9,6 +9,7 @@ from agent_bid_rigging.models import ExtractedSignals, LoadedDocument
 PHONE_RE = re.compile(r"(?<!\d)(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8})(?!\d)")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 BANK_RE = re.compile(r"(?<!\d)\d{12,24}(?!\d)")
+CONTACT_NAME_RE = re.compile(r"(?:联系人|项目联系人|联系人姓名|联\s*系\s*人)\s*[:：]?\s*([A-Za-z\u4e00-\u9fff]{2,12})")
 PRICE_INLINE_RE = re.compile(
     r"(?:投标报价|总报价|报价金额|投标总价|含税总价|不含税总价)\s*[:：]?\s*([0-9][0-9,]*(?:\.\d+)?)"
 )
@@ -79,6 +80,7 @@ def extract_signals(
         phones=sorted(set(PHONE_RE.findall(text))),
         emails=sorted(set(match.lower() for match in EMAIL_RE.findall(text))),
         bank_accounts=sorted(set(BANK_RE.findall(text))),
+        contact_names=sorted(set(_filter_contact_names(_clean_group(CONTACT_NAME_RE.findall(text))))),
         legal_representatives=sorted(
             set(_filter_legal_representatives(_clean_group(LEGAL_REP_RE.findall(text))))
         ),
@@ -142,6 +144,19 @@ def _filter_legal_representatives(values: list[str]) -> list[str]:
         if value in GENERIC_LEGAL_VALUES:
             continue
         if any(token in value for token in ("签字", "身份证", "授权", "盖章")):
+            continue
+        filtered.append(value)
+    return filtered
+
+
+def _filter_contact_names(values: list[str]) -> list[str]:
+    filtered: list[str] = []
+    for value in values:
+        if value in {"联系人", "项目联系人", "联系人姓名"}:
+            continue
+        if any(token in value for token in ("电话", "邮箱", "地址", "公司", "项目", "法定代表", "授权", "先生", "女士")):
+            continue
+        if not re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value):
             continue
         filtered.append(value)
     return filtered

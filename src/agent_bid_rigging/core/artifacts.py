@@ -232,6 +232,7 @@ def build_entity_field_table(signals: ReviewFacts | list[ExtractedSignals]) -> l
     if supplier_facts is not None:
         fact_fields = (
             "company_names",
+            "contact_names",
             "phones",
             "emails",
             "bank_accounts",
@@ -256,6 +257,7 @@ def build_entity_field_table(signals: ReviewFacts | list[ExtractedSignals]) -> l
         return rows
     for signal in signals:
         field_values = {
+            "contact_names": getattr(signal, "contact_names", []),
             "phones": signal.phones,
             "emails": signal.emails,
             "bank_accounts": signal.bank_accounts,
@@ -740,6 +742,7 @@ def _build_supplier_profiles(
                 "full_name": _extract_company_name(text) or supplier,
                 "bid_amount": price_map.get(supplier, {}).get("bid_amount") or _extract_bid_amount_from_text(text),
                 "phone": _first_or_none(doc.get("phones", [])),
+                "contact_name": _clean_person_name(_first_or_none(doc.get("contact_names", []))),
                 "email": _first_or_none(doc.get("emails", [])),
                 "bank_account": _first_or_none(doc.get("bank_accounts", [])),
                 "unified_social_credit_code": _first_or_none(doc.get("unified_social_credit_codes", [])),
@@ -770,6 +773,7 @@ def _build_supplier_profiles_from_facts(
                 "full_name": _primary_value(supplier, "company_names") or supplier.supplier,
                 "bid_amount": price_map.get(supplier.supplier, {}).get("bid_amount") or _primary_value(supplier, "bid_amounts"),
                 "phone": _primary_value(supplier, "phones"),
+                "contact_name": _clean_person_name(_primary_value(supplier, "contact_names")),
                 "email": _primary_value(supplier, "emails"),
                 "bank_account": _primary_value(supplier, "bank_accounts"),
                 "unified_social_credit_code": _primary_value(supplier, "unified_social_credit_codes"),
@@ -855,11 +859,12 @@ def _build_identity_points(profiles: list[dict]) -> list[str]:
     for profile in profiles:
         legal = profile.get("legal_representative") or "未自动识别"
         authorized = profile.get("authorized_representative") or "未自动识别"
+        contact_name = profile.get("contact_name") or "未自动识别"
         phone = profile.get("phone") or "未自动识别"
         address = profile.get("address") or "未自动识别"
         credit_code = profile.get("unified_social_credit_code") or "未自动识别"
         points.append(
-            f"{profile['full_name']}法定代表人识别为 `{legal}`，授权代表识别为 `{authorized}`，"
+            f"{profile['full_name']}法定代表人识别为 `{legal}`，授权代表识别为 `{authorized}`，联系人识别为 `{contact_name}`，"
             f"统一社会信用代码识别为 `{credit_code}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。"
         )
     return points or ["当前未形成可用于身份信息比对的有效结果。"]

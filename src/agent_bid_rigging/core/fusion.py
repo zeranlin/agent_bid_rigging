@@ -182,6 +182,7 @@ def merge_ocr_into_signal(signal: ExtractedSignals, ocr_rows: list[dict]) -> Non
         return
 
     phones = set(signal.phones)
+    contact_names = set(signal.contact_names)
     legal_reps = set(signal.legal_representatives)
     addresses = set(signal.addresses)
     bid_amounts = list(signal.bid_amounts)
@@ -190,6 +191,8 @@ def merge_ocr_into_signal(signal: ExtractedSignals, ocr_rows: list[dict]) -> Non
         fields = row.get("fields") or {}
         if phone := normalize_text_field(fields.get("phone")):
             phones.add(phone)
+        if contact_name := normalize_text_field(fields.get("contact_name") or fields.get("contact_person")):
+            contact_names.add(contact_name)
         if legal_rep := normalize_text_field(fields.get("legal_representative")):
             legal_reps.add(legal_rep)
         if address := normalize_text_field(fields.get("address")):
@@ -199,6 +202,7 @@ def merge_ocr_into_signal(signal: ExtractedSignals, ocr_rows: list[dict]) -> Non
             bid_amounts.append(amount)
 
     signal.phones = sorted(phones)
+    signal.contact_names = sorted(contact_names)
     signal.legal_representatives = sorted(legal_reps)
     signal.addresses = sorted(addresses)
     signal.bid_amounts = sorted(bid_amounts)
@@ -236,6 +240,8 @@ def append_ocr_entity_rows(entity_field_table: list[dict], ocr_rows: list[dict])
         "bid_total_amount": "bid_amounts",
         "address": "addresses",
         "phone": "phones",
+        "contact_name": "contact_names",
+        "contact_person": "contact_names",
     }
     grouped: dict[tuple[str, str], dict] = {}
     for row in ocr_rows:
@@ -376,6 +382,7 @@ def _build_supplier_facts(
         phones=_build_text_observations(signal.phones, signal.document.path),
         emails=_build_text_observations(signal.emails, signal.document.path),
         bank_accounts=_build_text_observations(signal.bank_accounts, signal.document.path),
+        contact_names=_build_text_observations(signal.contact_names, signal.document.path),
         unified_social_credit_codes=[],
         legal_representatives=_build_text_observations(signal.legal_representatives, signal.document.path),
         authorized_representatives=[],
@@ -436,6 +443,14 @@ def _build_supplier_facts(
             source_page,
             confidence,
             prefer_primary=not facts.phones,
+        )
+        _append_observation(
+            facts.contact_names,
+            normalize_text_field(fields.get("contact_name") or fields.get("contact_person")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.contact_names,
         )
         _append_observation(
             facts.legal_representatives,
@@ -706,6 +721,17 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
             source_type="section",
         )
 
+    contact_name = _extract_contact_name_from_profile_text(profile_text)
+    if contact_name:
+        _promote_primary_observation(
+            facts.contact_names,
+            contact_name,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.82,
+            source_type="section",
+        )
+
     credit_code = _extract_unified_social_credit_code_from_profile_text(profile_text)
     if credit_code:
         _promote_primary_observation(
@@ -729,6 +755,7 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
         )
 
     facts.company_names = _filter_company_name_observations(facts.company_names)
+    facts.contact_names = _filter_contact_observations(facts.contact_names)
     facts.legal_representatives = _filter_legal_observations(facts.legal_representatives)
     facts.authorized_representatives = _filter_legal_observations(facts.authorized_representatives)
     facts.addresses = _filter_address_observations(facts.addresses)
@@ -916,6 +943,19 @@ def _extract_phone_from_profile_text(text: str) -> str | None:
     return None
 
 
+def _extract_contact_name_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:联系人|项目联系人|联系人姓名|联\s*系\s*人)\s*[:：]\s*([A-Za-z\u4e00-\u9fff]{2,8})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).strip()
+            if value and value not in {"联系人", "项目联系人"}:
+                return value
+    return None
+
+
 def _extract_authorized_manufacturer_from_profile_text(text: str) -> str | None:
     patterns = (
         r"(?:授权厂家|厂家名称|制造商|生产厂家)\s*[:：]\s*([^\n]{2,80})",
@@ -996,8 +1036,31 @@ def _filter_legal_observations(observations: list[FactObservation]) -> list[Fact
     return _rebuild_primary(filtered)
 
 
+def _filter_contact_observations(observations: list[FactObservation]) -> list[FactObservation]:
+    filtered = [item for item in observations if _looks_like_contact_name(item.value)]
+    return _rebuild_primary(filtered)
+
+
 def _filter_address_observations(observations: list[FactObservation]) -> list[FactObservation]:
-    filtered = [item for item in observations if _looks_like_address(item.value)]
+    filtered: list[FactObservation] = []
+    seen: set[str] = set()
+    for item in observations:
+        normalized = _normalize_address_text(item.value)
+        if not _looks_like_address(normalized):
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        filtered.append(
+            FactObservation(
+                value=normalized,
+                source_type=item.source_type,
+                source_document=item.source_document,
+                source_page=item.source_page,
+                confidence=item.confidence,
+                is_primary=item.is_primary,
+            )
+        )
     return _rebuild_primary(filtered)
 
 
@@ -1032,12 +1095,30 @@ def _looks_like_person_name(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value))
 
 
+def _looks_like_contact_name(value: str) -> bool:
+    if not value:
+        return False
+    if any(token in value for token in ("电话", "邮箱", "地址", "公司", "法定代表", "授权", "项目")):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value))
+
+
 def _looks_like_address(value: str) -> bool:
     if not value:
         return False
     if "@" in value or "发票等信息" in value or "商品数量" in value:
         return False
     return any(token in value for token in ("省", "市", "区", "县", "路", "街", "号", "镇", "大厦", "园", "楼"))
+
+
+def _normalize_address_text(value: str) -> str:
+    normalized = normalize_text_field(value)
+    if not normalized:
+        return ""
+    normalized = normalized.replace("（", "(").replace("）", ")")
+    normalized = re.sub(r"\s+", "", normalized)
+    normalized = re.sub(r"[，,。；;：:]+$", "", normalized)
+    return normalized
 
 
 def _looks_like_credit_code(value: str) -> bool:

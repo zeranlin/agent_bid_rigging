@@ -87,6 +87,12 @@ def test_extract_signals_filters_tender_template() -> None:
     assert "项目名称：城市保洁" not in signals.non_tender_lines
 
 
+def test_extract_signals_finds_contact_name() -> None:
+    bid = load_document_from_text("alpha", "bid", "联系人：王小明\n联系电话：13800000000\n投标报价：100000")
+    signals = extract_signals(bid)
+    assert signals.contact_names == ["王小明"]
+
+
 def test_extract_signals_finds_price_in_opening_table() -> None:
     bid = load_document_from_text(
         "alpha",
@@ -238,6 +244,19 @@ def test_pairwise_scoring_uses_pricing_rows_from_review_facts() -> None:
     assert any(finding.title == "分项报价结构高度一致" for finding in assessment.findings)
     assert assessment.dimension_summary["pricing_link"]["matched"] is True
     assert assessment.dimension_summary["pricing_link"]["tier"] == "strong"
+
+
+def test_pairwise_scoring_uses_contact_names_and_normalized_addresses() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "联系人：王小明\n地址：呼和浩特市 新城区示例路1号\n投标报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "联系人：王小明\n地址：呼和浩特市新城区示例路1号\n投标报价：120000"))
+
+    assessment = assess_pairs(build_review_facts(tender, [left, right], [], []))[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "联系人姓名重合" in titles
+    assert "地址信息重合" in titles
+    assert assessment.dimension_summary["identity_link"]["matched"] is True
 
 
 def test_signature_noise_does_not_create_high_risk() -> None:
