@@ -8,6 +8,7 @@ import click
 
 from agent_bid_rigging.capabilities import CapabilityContext
 from agent_bid_rigging.capabilities.ocr import OcrCapability
+from agent_bid_rigging.capabilities.pdf_sectioning import PdfSectioningCapability
 from agent_bid_rigging.core.runner import finish_llm_review, run_review
 from agent_bid_rigging.web import run_demo_server
 
@@ -147,6 +148,35 @@ def ocr(
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     click.echo(f"OCR 完成，识别图片数: {payload['payload']['image_count']}")
+
+
+@cli.command("pdf-sectioning")
+@click.option("--input", "input_path", required=True, type=click.Path(exists=True))
+@click.option("--output-dir", type=click.Path(), default=None)
+@click.option("--with-text/--without-text", default=True, show_default=True)
+@click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
+@click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
+@click.pass_context
+def pdf_sectioning(
+    ctx: click.Context,
+    input_path: str,
+    output_dir: str | None,
+    with_text: bool,
+    json_flag: bool,
+    json_flag_compat: bool,
+) -> None:
+    capability = PdfSectioningCapability()
+    result = capability.run(
+        CapabilityContext(source_path=input_path),
+        source_path=input_path,
+        output_dir=output_dir,
+        include_text=with_text,
+    )
+    payload = result.to_dict()
+    if ctx.obj.get("json_output") or json_flag or json_flag_compat:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(f"PDF 章节切分完成，识别章节数: {payload['payload']['section_count']}")
 
 
 @cli.command()
