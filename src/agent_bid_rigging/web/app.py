@@ -229,13 +229,27 @@ RUN_TEMPLATE = """<!doctype html>
     .muted { color: var(--muted); }
     .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
     .meta div { padding: 12px; border-radius: 12px; background: #faf5ee; border: 1px solid var(--line); }
-    .links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
     a.button {
-      display: inline-flex; justify-content: center; align-items: center;
-      text-decoration: none; padding: 12px 14px; border-radius: 14px;
-      background: var(--accent); color: white; font-weight: 600;
+      display: grid;
+      gap: 6px;
+      text-decoration: none;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #975200 0%, #7c3f00 100%);
+      color: white;
+      font-weight: 600;
+      min-height: 92px;
+      align-content: center;
     }
-    a.secondary { background: transparent; border: 1px solid var(--line); color: var(--accent); }
+    a.button strong { font-size: 20px; }
+    a.button span { font-size: 13px; color: rgba(255,255,255,0.82); }
+    a.secondary {
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--accent);
+    }
+    a.secondary span { color: color-mix(in srgb, var(--accent) 82%, white); }
     pre {
       margin: 0;
       padding: 18px;
@@ -245,6 +259,23 @@ RUN_TEMPLATE = """<!doctype html>
       color: #f7f1e8;
       font-size: 13px;
       line-height: 1.5;
+    }
+    .report-viewer {
+      padding: 26px;
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.95), rgba(249,244,236,0.98));
+      border: 1px solid #e0d4c5;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+      white-space: pre-wrap;
+      line-height: 1.9;
+      font-size: 15px;
+    }
+    .section-note {
+      margin-top: -4px;
+      margin-bottom: 16px;
+      color: var(--muted);
+      font-size: 14px;
     }
     ul { margin: 0; padding-left: 20px; }
     .state-completed { color: var(--ok); }
@@ -274,9 +305,13 @@ RUN_TEMPLATE = """<!doctype html>
     </section>
     <section class="panel">
       <h2>报告入口</h2>
+      <p class="section-note">优先查看主报告；规则版和 LLM 版可以用于对照审查口径差异。</p>
       <div class="links">
         {% for item in report_links %}
-        <a class="button {% if item.secondary %}secondary{% endif %}" href="{{ item.href }}">{{ item.label }}</a>
+        <a class="button {% if item.secondary %}secondary{% endif %}" href="{{ item.href }}">
+          <strong>{{ item.label }}</strong>
+          <span>{{ item.caption }}</span>
+        </a>
         {% endfor %}
       </div>
     </section>
@@ -292,10 +327,11 @@ RUN_TEMPLATE = """<!doctype html>
       <h2>运行状态 JSON</h2>
       <pre>{{ status_json }}</pre>
     </section>
-    {% if summary_excerpt %}
+    {% if report_content %}
     <section class="panel">
-      <h2>摘要预览</h2>
-      <pre>{{ summary_excerpt }}</pre>
+      <h2>报告查看</h2>
+      <p class="section-note">这里直接展示当前 `formal_report.md` 的正文内容，方便发布演示时现场查看。</p>
+      <div class="report-viewer">{{ report_content }}</div>
     </section>
     {% endif %}
   </main>
@@ -388,10 +424,10 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         )
         if job.get("state") in {"queued", "running", "failed"} and status.get("state") == "not-requested":
             status["state"] = job.get("state")
-        summary_excerpt = None
-        summary_path = run_dir / "summary.md"
-        if summary_path.exists():
-            summary_excerpt = summary_path.read_text(encoding="utf-8")[:5000]
+        report_content = None
+        report_path = run_dir / "formal_report.md"
+        if report_path.exists():
+            report_content = report_path.read_text(encoding="utf-8")
         return render_template_string(
             RUN_TEMPLATE,
             run_id=run_id,
@@ -401,7 +437,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
             report_links=_report_links(run_dir),
             artifact_links=_artifact_links(run_id, run_dir),
-            summary_excerpt=summary_excerpt,
+            report_content=report_content,
             auto_refresh=status.get("state") in {"queued", "running"},
         )
 
@@ -566,21 +602,22 @@ def _unique_upload_path(target_dir: Path, filename: str) -> Path:
 
 def _report_links(run_dir: Path) -> list[dict[str, Any]]:
     mapping = [
-        ("formal_report.md", "主报告"),
-        ("formal_report.rule.md", "规则版报告"),
-        ("formal_report.llm.md", "LLM 版报告"),
-        ("opinion.md", "主意见书"),
-        ("opinion.rule.md", "规则版意见书"),
-        ("opinion.llm.md", "LLM 版意见书"),
-        ("summary.md", "摘要"),
+        ("formal_report.md", "主报告", "当前默认入口，适合直接展示"),
+        ("formal_report.rule.md", "规则版报告", "规则链路生成，稳定可审计"),
+        ("formal_report.llm.md", "LLM 版报告", "大模型增强措辞与证据解释"),
+        ("opinion.md", "主意见书", "更适合看结论与建议"),
+        ("opinion.rule.md", "规则版意见书", "规则口径输出的意见书"),
+        ("opinion.llm.md", "LLM 版意见书", "LLM 增强版意见书"),
+        ("summary.md", "摘要", "快速查看两两风险结果"),
     ]
     links = []
-    for name, label in mapping:
+    for name, label, caption in mapping:
         path = run_dir / name
         if path.exists():
             links.append(
                 {
                     "label": label,
+                    "caption": caption,
                     "href": url_for("artifact", run_id=run_dir.name, name=name),
                     "secondary": name not in {"formal_report.md", "opinion.md"},
                 }
