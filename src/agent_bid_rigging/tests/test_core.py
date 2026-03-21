@@ -236,6 +236,33 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     assert "alpha 与 beta" in opinion["document"]
 
 
+def test_normative_response_sections_do_not_trigger_text_overlap_finding() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：电子胃肠镜等设备采购项目")
+    baseline = build_tender_baseline(tender)
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "技术偏离表\n1、最小可视距离≤3mm。 1、最小可视距离 2mm。 响应 见彩页\n"
+            "投标承诺书\n你方组织的 电子胃肠镜等设备采购项目(项目名称)的招标，\n"
+            "投标人业绩情况表\n投标人根据上述业绩情况后附销售或服务合同复印件。",
+        ),
+        tender_lines=baseline,
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "技术偏离表\n1、最小可视距离≤3mm。 1、最小可视距离 2mm。 响应 见彩页\n"
+            "投标承诺书\n你方组织的 电子胃肠镜等设备采购项目(项目名称)的招标，\n"
+            "投标人业绩情况表\n投标人根据上述业绩情况后附销售或服务合同复印件。",
+        ),
+        tender_lines=baseline,
+    )
+    assessment = assess_pairs([left, right])[0]
+    assert all(finding.title != "仅两家共享的非模板文本重合" for finding in assessment.findings)
+
+
 def test_document_classifier_tags_known_document() -> None:
     category = classify_document("开标一览表.pdf", "开标一览表 投标总报价（元）")
     assert category == "开标一览表"

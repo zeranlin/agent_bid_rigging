@@ -15,6 +15,10 @@ TEMPLATE_OVERLAP_PATTERNS = (
     "整理设备试运转中的情况",
     "受到过良好教育",
     "专业技术人员，为该项目提供技术培训",
+    "响应 见彩页",
+    "投标人根据上述业绩情况后附销售或服务合同复印件",
+    "你方组织的",
+    "项目名称)的招标",
 )
 TEMPLATE_COMPONENT_PATTERNS = (
     "项目实施方案",
@@ -24,6 +28,12 @@ TEMPLATE_COMPONENT_PATTERNS = (
     "主要商务要求",
     "具有履行合同所必需的设备和专业技术",
     "供应商应提交的相关资格证明材料",
+    "技术偏离表",
+    "投标承诺书",
+    "投标人业绩情况表",
+    "业绩情况表",
+    "商务要求",
+    "服务承诺",
 )
 
 
@@ -163,9 +173,11 @@ def _pair_only_line_findings(
 def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
     if any(pattern in line for pattern in TEMPLATE_OVERLAP_PATTERNS):
         return True
-    return _refs_look_template_like(_candidate_overlap_refs(left).get(line, [])) and _refs_look_template_like(
-        _candidate_overlap_refs(right).get(line, [])
-    )
+    left_refs = _candidate_overlap_refs(left).get(line, [])
+    right_refs = _candidate_overlap_refs(right).get(line, [])
+    if _refs_look_template_like(left_refs) and _refs_look_template_like(right_refs):
+        return True
+    return _refs_look_normative_like(left_refs) or _refs_look_normative_like(right_refs)
 
 
 def _refs_look_template_like(refs: list[dict]) -> bool:
@@ -176,6 +188,31 @@ def _refs_look_template_like(refs: list[dict]) -> bool:
         source_document = str(ref.get("source_document") or "")
         corpus = f"{title} {source_document}"
         if any(pattern in corpus for pattern in TEMPLATE_COMPONENT_PATTERNS):
+            return True
+    return False
+
+
+def _refs_look_normative_like(refs: list[dict]) -> bool:
+    if not refs:
+        return False
+    for ref in refs:
+        title = str(ref.get("component_title") or "")
+        source_document = str(ref.get("source_document") or "")
+        corpus = f"{title} {source_document}"
+        if any(
+            pattern in corpus
+            for pattern in (
+                "技术偏离表",
+                "投标承诺书",
+                "投标人业绩情况表",
+                "业绩情况表",
+                "项目实施方案",
+                "质量保证及售后服务承诺",
+                "售后服务",
+                "培训",
+                "供应商应提交的相关资格证明材料",
+            )
+        ):
             return True
     return False
 
