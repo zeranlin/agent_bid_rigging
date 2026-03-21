@@ -255,6 +255,7 @@ def normalize_text_field(value: object) -> str:
 
 def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) -> SupplierFacts:
     supplier_rows = [row for row in image_ocr_rows if row.get("supplier") == signal.document.name]
+    company_name_candidates = _build_company_name_observations(signal)
     facts = SupplierFacts(
         supplier=signal.document.name,
         document=signal.document,
@@ -264,14 +265,7 @@ def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) 
         non_tender_lines=list(signal.non_tender_lines),
         rare_line_fingerprints=dict(signal.rare_line_fingerprints),
         candidate_overlap_lines=list(signal.candidate_overlap_lines),
-        company_names=[
-            FactObservation(
-                value=signal.document.name,
-                source_type="text",
-                source_document=signal.document.path,
-                is_primary=True,
-            )
-        ],
+        company_names=company_name_candidates,
         phones=_build_text_observations(signal.phones, signal.document.path),
         emails=_build_text_observations(signal.emails, signal.document.path),
         bank_accounts=_build_text_observations(signal.bank_accounts, signal.document.path),
@@ -411,6 +405,30 @@ def _build_text_observations(values: list[str], source_document: str) -> list[Fa
     return observations
 
 
+def _build_company_name_observations(signal: ExtractedSignals) -> list[FactObservation]:
+    observations: list[FactObservation] = []
+    extracted = _extract_company_name_from_text(signal.document.text)
+    if extracted:
+        observations.append(
+            FactObservation(
+                value=extracted,
+                source_type="text",
+                source_document=signal.document.path,
+                is_primary=True,
+            )
+        )
+    if not any(item.value == signal.document.name for item in observations):
+        observations.append(
+            FactObservation(
+                value=signal.document.name,
+                source_type="text",
+                source_document=signal.document.path,
+                is_primary=not observations,
+            )
+        )
+    return observations
+
+
 def _build_amount_observations(values: list[float], source_document: str) -> list[FactObservation]:
     unique_values = sorted(set(values))
     observations: list[FactObservation] = []
@@ -457,3 +475,11 @@ def _extract_modified_times(components: list[dict]) -> list[str]:
         for component in components
         if component.get("modified_at")
     ]
+
+
+def _extract_company_name_from_text(text: str) -> str | None:
+    pattern = re.compile(r"([A-Za-z（）()·\u4e00-\u9fff]{4,}(?:有限责任公司|股份有限公司|有限公司|公司))")
+    matches = pattern.findall(text)
+    if not matches:
+        return None
+    return matches[0].strip()

@@ -107,7 +107,9 @@ def test_build_review_ocr_request_is_targeted_for_review_tasks() -> None:
 
 def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
-    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000\n邮箱：alpha@example.com"))
+    signal = extract_signals(
+        load_document_from_text("alpha", "bid", "内蒙古阿尔法科技有限公司\n投标总报价：100000\n邮箱：alpha@example.com")
+    )
     ocr_rows = [
         {
             "supplier": "alpha",
@@ -132,3 +134,4 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].phones[0].value == "13800000000"
     assert review_facts.suppliers[0].license_numbers[0].value == "LIC-001"
     assert review_facts.suppliers[0].company_names[0].is_primary is True
+    assert review_facts.suppliers[0].company_names[0].value == "内蒙古阿尔法科技有限公司"

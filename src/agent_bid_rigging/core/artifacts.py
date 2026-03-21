@@ -461,7 +461,7 @@ def build_formal_report(
     supplier_name_map = {profile["supplier"]: profile["full_name"] for profile in supplier_profiles}
     structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table, supplier_name_map)
     suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table, supplier_name_map)
-    exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table)
+    exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table, supplier_name_map)
     further_checks = _build_further_checks(top_pair, supplier_name_map)
     evidence_summary = evidence_grade_table[:12]
     fact_table = [
@@ -831,8 +831,15 @@ def _build_suspicious_points(
     return points
 
 
-def _build_exclusion_points(review_conclusion_table: dict, risk_score_table: list[dict]) -> list[str]:
-    points = list(review_conclusion_table.get("exclusionary_factors", []))
+def _build_exclusion_points(
+    review_conclusion_table: dict,
+    risk_score_table: list[dict],
+    supplier_name_map: dict[str, str] | None = None,
+) -> list[str]:
+    points = [
+        _replace_supplier_names(item, supplier_name_map)
+        for item in review_conclusion_table.get("exclusionary_factors", [])
+    ]
     if all(row["entity_link_score"] == 0 for row in risk_score_table):
         points.append("各供应商之间未发现联系人、法定代表人、银行账户等核心身份要素的明显重合。")
     if all(row["file_homology_score"] == 0 for row in risk_score_table):
@@ -1381,3 +1388,12 @@ def _pair_display(left: str, right: str, supplier_name_map: dict[str, str] | Non
     if not supplier_name_map:
         return f"{left}与{right}"
     return f"{supplier_name_map.get(left, left)}与{supplier_name_map.get(right, right)}"
+
+
+def _replace_supplier_names(text: str, supplier_name_map: dict[str, str] | None = None) -> str:
+    if not supplier_name_map:
+        return text
+    updated = text
+    for short, full in sorted(supplier_name_map.items(), key=lambda item: len(item[0]), reverse=True):
+        updated = updated.replace(short, full)
+    return updated
