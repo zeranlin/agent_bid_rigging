@@ -112,6 +112,26 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
     (run_dir / "formal_report.md").write_text("main report", encoding="utf-8")
     (run_dir / "formal_report.rule.md").write_text("rule report", encoding="utf-8")
     (run_dir / "formal_report.llm.md").write_text("llm report", encoding="utf-8")
+    (run_dir / "risk_score_table.json").write_text(
+        json.dumps(
+            [
+                {
+                    "supplier_a": "恒禾",
+                    "supplier_b": "华康",
+                    "dimension_summary": {
+                        "identity_link": {"matched": True, "tier": "strong"},
+                        "pricing_link": {"matched": True, "tier": "medium"},
+                        "text_similarity": {"matched": False, "tier": "none"},
+                        "file_homology": {"matched": False, "tier": "none"},
+                        "authorization_chain": {"matched": False, "tier": "none"},
+                        "timeline_trace": {"matched": False, "tier": "none"},
+                    },
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
     response = client.get("/runs/demo_case?report=rule")
 
@@ -119,6 +139,8 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "rule report" in body
     assert "大模型版报告" in body
+    assert "维度摘要概览" in body
+    assert "主体关联强；报价关联中" in body
 
 
 def test_supplier_name_derivation() -> None:

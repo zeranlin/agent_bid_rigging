@@ -13,6 +13,29 @@ from werkzeug.datastructures import FileStorage
 
 from agent_bid_rigging.core.runner import run_review
 
+DIMENSION_LABELS = {
+    "identity_link": "主体关联",
+    "pricing_link": "报价关联",
+    "text_similarity": "文本与方案关联",
+    "file_homology": "结构同源",
+    "authorization_chain": "授权与资质链",
+    "timeline_trace": "时间与电子痕迹",
+}
+DIMENSION_ORDER = (
+    "identity_link",
+    "pricing_link",
+    "text_similarity",
+    "file_homology",
+    "authorization_chain",
+    "timeline_trace",
+)
+DIMENSION_TIER_LABELS = {
+    "strong": "强",
+    "medium": "中",
+    "weak": "弱",
+    "none": "未命中",
+}
+
 INDEX_TEMPLATE = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -275,6 +298,23 @@ RUN_TEMPLATE = """<!doctype html>
     .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
     .meta div { padding: 12px; border-radius: 12px; background: #faf5ee; border: 1px solid var(--line); }
     .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .dimension-summary {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      background: #faf5ee;
+      border: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+    }
+    .dimension-summary ul {
+      padding-left: 18px;
+      margin: 0;
+    }
+    .dimension-summary li {
+      margin: 0;
+      color: var(--ink);
+    }
     a.button {
       display: grid;
       gap: 6px;
@@ -411,6 +451,16 @@ RUN_TEMPLATE = """<!doctype html>
         </a>
         {% endfor %}
       </div>
+      {% if dimension_overview %}
+      <div class="dimension-summary">
+        <strong>维度摘要概览</strong>
+        <ul>
+          {% for item in dimension_overview %}
+          <li><strong>{{ item.pair }}</strong>：{{ item.summary }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
     </section>
     {% if auto_refresh %}
     <section class="panel">
@@ -544,6 +594,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             mode_label=_review_mode_label(job.get("review_mode")),
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
             report_links=_report_links(run_id, run_dir, selected_report),
+            dimension_overview=_build_dimension_overview(run_dir),
             report_content=report_content,
             auto_refresh=status.get("state") in {"queued", "running"},
         )
@@ -737,6 +788,39 @@ def _report_links(run_id: str, run_dir: Path, selected: str) -> list[dict[str, A
                 }
             )
     return links
+
+
+def _build_dimension_overview(run_dir: Path) -> list[dict[str, str]]:
+    risk_rows = _read_json(run_dir / "risk_score_table.json", default=[])
+    if not isinstance(risk_rows, list):
+        return []
+    rows: list[dict[str, str]] = []
+    for item in risk_rows[:6]:
+        summary = _render_dimension_summary_text(item.get("dimension_summary", {}))
+        if not summary:
+            continue
+        rows.append(
+            {
+                "pair": f"{item.get('supplier_a', '-')} 与 {item.get('supplier_b', '-')}",
+                "summary": summary,
+            }
+        )
+    return rows
+
+
+def _render_dimension_summary_text(summary: dict[str, dict]) -> str:
+    if not summary:
+        return ""
+    parts: list[str] = []
+    for key in DIMENSION_ORDER:
+        item = summary.get(key, {})
+        tier = item.get("tier", "none")
+        if tier == "none":
+            continue
+        parts.append(f"{DIMENSION_LABELS[key]}{DIMENSION_TIER_LABELS.get(tier, '未命中')}")
+    if not parts:
+        return "六个判断维度均未形成明确命中"
+    return "；".join(parts)
 
 
 def _resolve_report_variant(run_dir: Path, selected: str) -> tuple[Path, str]:
