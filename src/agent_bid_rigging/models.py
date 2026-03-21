@@ -132,6 +132,7 @@ class PairwiseAssessment:
     risk_score: int
     risk_level: str
     findings: list[PairwiseFinding]
+    dimension_summary: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -140,4 +141,5 @@ class PairwiseAssessment:
             "risk_score": self.risk_score,
             "risk_level": self.risk_level,
             "findings": [finding.to_dict() for finding in self.findings],
+            "dimension_summary": self.dimension_summary,
         }

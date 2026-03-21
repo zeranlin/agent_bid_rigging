@@ -119,6 +119,8 @@ def test_pairwise_scoring_finds_shared_signals() -> None:
     assessment = assess_pairs([left, right])[0]
     assert assessment.risk_level in {"high", "critical"}
     assert assessment.risk_score >= 80
+    assert assessment.dimension_summary["identity_link"]["matched"] is True
+    assert assessment.dimension_summary["identity_link"]["tier"] == "strong"
 
 
 def test_pairwise_scoring_can_stay_low() -> None:
@@ -207,6 +209,10 @@ def test_pairwise_scoring_uses_new_review_facts_identity_and_authorization_field
     assert "授权厂家重合" in titles
     assert "授权方重合" in titles
     assert "授权时间重合" in titles
+    assert assessment.dimension_summary["identity_link"]["matched"] is True
+    assert assessment.dimension_summary["identity_link"]["tier"] == "strong"
+    assert assessment.dimension_summary["authorization_chain"]["matched"] is True
+    assert assessment.dimension_summary["authorization_chain"]["tier"] == "medium"
 
 
 def test_pairwise_scoring_uses_pricing_rows_from_review_facts() -> None:
@@ -230,6 +236,8 @@ def test_pairwise_scoring_uses_pricing_rows_from_review_facts() -> None:
     )
     assessment = assess_pairs(review_facts)[0]
     assert any(finding.title == "分项报价结构高度一致" for finding in assessment.findings)
+    assert assessment.dimension_summary["pricing_link"]["matched"] is True
+    assert assessment.dimension_summary["pricing_link"]["tier"] == "strong"
 
 
 def test_signature_noise_does_not_create_high_risk() -> None:
@@ -525,6 +533,7 @@ def test_risk_score_table_matches_pairwise_assessment() -> None:
     risk_table = build_risk_score_table([assessment], [], [], [], [], [])
     assert risk_table[0]["total_score"] == assessment.risk_score
     assert risk_table[0]["risk_level"] == assessment.risk_level
+    assert risk_table[0]["dimension_summary"] == assessment.dimension_summary
 
 
 def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> None:

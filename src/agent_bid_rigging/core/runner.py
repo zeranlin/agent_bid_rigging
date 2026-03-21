@@ -647,6 +647,7 @@ def _rebuild_pairwise_assessments(risk_rows: list[dict], evidence_rows: list[dic
                 "supplier_b": item["supplier_b"],
                 "risk_score": item["total_score"],
                 "risk_level": item["risk_level"],
+                "dimension_summary": item.get("dimension_summary", {}),
                 "findings": evidence_map.get(key, []),
             }
         )
@@ -663,6 +664,14 @@ def _weight_from_finding_title(title: str) -> int:
         "投标报价完全一致": 35,
         "投标报价极度接近": 20,
         "投标报价较为接近": 10,
+        "统一社会信用代码重合": 40,
+        "授权代表信息重合": 20,
+        "分项报价结构高度一致": 20,
+        "分项报价结构相似": 12,
+        "分项报价单项重合": 6,
+        "授权厂家重合": 18,
+        "授权方重合": 15,
+        "授权时间重合": 8,
         "仅两家共享的非模板文本重合": 30,
     }
     return weights.get(title, 10)

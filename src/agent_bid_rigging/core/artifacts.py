@@ -409,6 +409,7 @@ def build_risk_score_table(
             {
                 "supplier_a": assessment.supplier_a,
                 "supplier_b": assessment.supplier_b,
+                "dimension_summary": assessment.dimension_summary,
                 "file_homology_score": file_homology,
                 "pricing_score": pricing,
                 "technical_text_score": text_score,

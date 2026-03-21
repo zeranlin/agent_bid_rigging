@@ -5,6 +5,15 @@ from itertools import combinations
 
 from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding, ReviewFacts, SupplierFacts
 
+DIMENSION_NAMES = (
+    "identity_link",
+    "pricing_link",
+    "text_similarity",
+    "file_homology",
+    "authorization_chain",
+    "timeline_trace",
+)
+
 TEMPLATE_OVERLAP_PATTERNS = (
     "培训特点",
     "有针对性的培训方案",
@@ -119,6 +128,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
                 risk_score=score,
                 risk_level=_risk_level(score),
                 findings=sorted(findings, key=lambda item: item.weight, reverse=True),
+                dimension_summary=_build_dimension_summary(findings),
             )
         )
     return sorted(assessments, key=lambda item: item.risk_score, reverse=True)
@@ -328,6 +338,84 @@ def _risk_level(score: int) -> str:
     if score >= 20:
         return "medium"
     return "low"
+
+
+def _build_dimension_summary(findings: list[PairwiseFinding]) -> dict[str, dict[str, object]]:
+    summary = {
+        name: {
+            "matched": False,
+            "score": 0,
+            "tier": "none",
+            "finding_titles": [],
+        }
+        for name in DIMENSION_NAMES
+    }
+    for finding in findings:
+        dimension = _dimension_for_finding(finding.title)
+        tier = _tier_for_finding(finding.title, finding.weight)
+        item = summary[dimension]
+        item["matched"] = True
+        item["score"] = int(item["score"]) + finding.weight
+        item["finding_titles"].append(finding.title)
+        if _tier_rank(tier) > _tier_rank(str(item["tier"])):
+            item["tier"] = tier
+    return summary
+
+
+def _dimension_for_finding(title: str) -> str:
+    if title in {
+        "统一社会信用代码重合",
+        "联系人电话重合",
+        "邮箱重合",
+        "银行账号重合",
+        "法定代表人信息重合",
+        "授权代表信息重合",
+        "地址信息重合",
+    }:
+        return "identity_link"
+    if title in {
+        "投标报价完全一致",
+        "投标报价极度接近",
+        "投标报价较为接近",
+        "分项报价结构高度一致",
+        "分项报价结构相似",
+        "分项报价单项重合",
+    }:
+        return "pricing_link"
+    if "文本重合" in title:
+        return "text_similarity"
+    if title in {"文件完全一致", "文件高度同源", "文件指纹重合"}:
+        return "file_homology"
+    if title in {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合"}:
+        return "authorization_chain"
+    if title in {"时间轨迹异常接近", "创建修改时间高度重合"}:
+        return "timeline_trace"
+    return "text_similarity"
+
+
+def _tier_for_finding(title: str, weight: int) -> str:
+    if title in {"统一社会信用代码重合", "银行账号重合"}:
+        return "strong"
+    if title in {"联系人电话重合", "邮箱重合", "投标报价完全一致", "分项报价结构高度一致"}:
+        return "strong"
+    if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合"}:
+        return "medium"
+    if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合"}:
+        return "medium"
+    if "文本重合" in title:
+        return "medium" if weight >= 20 else "weak"
+    if title in {"投标报价较为接近", "分项报价单项重合"}:
+        return "weak"
+    return "medium" if weight >= 20 else "weak"
+
+
+def _tier_rank(tier: str) -> int:
+    return {
+        "none": 0,
+        "weak": 1,
+        "medium": 2,
+        "strong": 3,
+    }.get(tier, 0)
 
 
 def _coerce_suppliers(signals: ReviewFacts | list[ExtractedSignals]) -> list[ExtractedSignals | SupplierFacts]:
