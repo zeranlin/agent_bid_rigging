@@ -40,6 +40,7 @@ def cli(ctx: click.Context, json_output: bool) -> None:
     show_default=True,
     help="How to generate the review opinion document.",
 )
+@click.option("--enable-ocr", is_flag=True, help="Enable OCR capability for PDFs and embedded images.")
 @click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
 @click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
 @click.pass_context
@@ -50,6 +51,7 @@ def analyze(
     output_dir: str | None,
     label: str | None,
     opinion_mode: str,
+    enable_ocr: bool,
     json_flag: bool,
     json_flag_compat: bool,
 ) -> None:
@@ -60,6 +62,7 @@ def analyze(
         output_dir=output_dir,
         label=label,
         opinion_mode=opinion_mode.lower(),
+        enable_ocr=enable_ocr,
     )
     if ctx.obj.get("json_output") or json_flag or json_flag_compat:
         click.echo(json.dumps(report, ensure_ascii=False, indent=2))

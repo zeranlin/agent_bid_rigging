@@ -27,6 +27,7 @@ def extract_pdf_images(pdf_path: str | Path, output_dir: str | Path) -> list[Ocr
             stored_path.write_bytes(image.data)
             records.append(
                 OcrImageRecord(
+                    source_path=str(source),
                     page_index=page_index,
                     image_index=image_counter,
                     image_name=image_name,
@@ -43,6 +44,7 @@ def build_image_record(image_path: str | Path, image_index: int = 1) -> OcrImage
     source = Path(image_path).expanduser().resolve()
     mime_type, _ = mimetypes.guess_type(source.name)
     return OcrImageRecord(
+        source_path=str(source),
         page_index=None,
         image_index=image_index,
         image_name=source.name,
@@ -71,5 +73,6 @@ def _media_type_from_suffix(suffix: str) -> str:
         ".jpeg": "image/jpeg",
         ".png": "image/png",
         ".webp": "image/webp",
+        ".jp2": "image/jp2",
     }
     return mapping.get(suffix.lower(), "application/octet-stream")

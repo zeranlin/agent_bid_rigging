@@ -7,6 +7,7 @@ from typing import Any
 
 @dataclass(slots=True)
 class OcrImageRecord:
+    source_path: str
     page_index: int | None
     image_index: int
     image_name: str

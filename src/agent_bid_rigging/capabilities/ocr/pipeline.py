@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import tempfile
+import zipfile
 from pathlib import Path
 
 from agent_bid_rigging.capabilities.base import CapabilityContext, CapabilityResult, ReviewCapability
 from agent_bid_rigging.capabilities.ocr.pdf_images import build_image_record, extract_pdf_images
 from agent_bid_rigging.capabilities.ocr.qwen_backend import QwenOcrBackend
 from agent_bid_rigging.capabilities.ocr.schemas import OcrImageResult
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".jp2"}
+OCR_DISCOVERY_SUFFIXES = IMAGE_SUFFIXES | {".pdf"}
 
 
 class OcrCapability(ReviewCapability):
@@ -24,14 +29,16 @@ class OcrCapability(ReviewCapability):
         output_dir = Path(str(kwargs.get("output_dir") or source.parent / f"{source.stem}_ocr")).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        if source.suffix.lower() == ".pdf":
-            images = extract_pdf_images(source, output_dir / "images")
-        elif source.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-            images = [build_image_record(source)]
-        else:
-            raise ValueError(f"Unsupported OCR source format: {source.suffix}")
-
         warnings: list[str] = []
+        sources = _discover_sources(source)
+        images = []
+        global_index = 0
+        for source_item in sources:
+            source_images = _extract_source_images(source_item, output_dir / "images")
+            for image in source_images:
+                global_index += 1
+                image.image_index = global_index
+            images.extend(source_images)
         if not images:
             warnings.append("No embedded images were extracted from the source document.")
 
@@ -42,6 +49,8 @@ class OcrCapability(ReviewCapability):
         payload = {
             "source_path": str(source),
             "output_dir": str(output_dir),
+            "source_count": len(sources),
+            "sources": [str(item) for item in sources],
             "image_count": len(images),
             "images": [image.to_dict() for image in images],
             "image_results": [result.to_dict() for result in image_results],
@@ -96,7 +105,7 @@ def _build_image_index_rows(source: Path, images: list) -> list[dict]:
         rows.append(
             {
                 "image_id": f"IMG{image.image_index:03d}",
-                "source_path": str(source),
+                "source_path": image.source_path or str(source),
                 "page_index": image.page_index,
                 "image_index": image.image_index,
                 "image_name": image.image_name,
@@ -115,7 +124,7 @@ def _build_image_ocr_rows(source: Path, image_results: list[OcrImageResult]) -> 
         rows.append(
             {
                 "image_id": f"IMG{result.image.image_index:03d}",
-                "source_path": str(source),
+                "source_path": result.image.source_path or str(source),
                 "page_index": result.image.page_index,
                 "stored_path": result.image.stored_path,
                 "doc_type": result.doc_type,
@@ -126,3 +135,37 @@ def _build_image_ocr_rows(source: Path, image_results: list[OcrImageResult]) -> 
             }
         )
     return rows
+
+
+def _discover_sources(source: Path) -> list[Path]:
+    if source.is_dir():
+        return [
+            path
+            for path in sorted(source.rglob("*"))
+            if path.is_file() and _should_ingest_source(path)
+        ]
+    if source.suffix.lower() == ".zip":
+        temp_dir = Path(tempfile.mkdtemp(prefix="agent_bid_rigging_ocr_"))
+        with zipfile.ZipFile(source) as archive:
+            archive.extractall(temp_dir)
+        return _discover_sources(temp_dir)
+    if _should_ingest_source(source):
+        return [source]
+    raise ValueError(f"Unsupported OCR source format: {source.suffix}")
+
+
+def _extract_source_images(source: Path, target_dir: Path) -> list:
+    suffix = source.suffix.lower()
+    if suffix == ".pdf":
+        return extract_pdf_images(source, target_dir)
+    if suffix in IMAGE_SUFFIXES:
+        return [build_image_record(source)]
+    return []
+
+
+def _should_ingest_source(path: Path) -> bool:
+    if path.name.startswith("._"):
+        return False
+    if "__MACOSX" in path.parts:
+        return False
+    return path.suffix.lower() in OCR_DISCOVERY_SUFFIXES
