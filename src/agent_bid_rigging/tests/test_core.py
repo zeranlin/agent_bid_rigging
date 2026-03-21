@@ -190,6 +190,27 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
         "run_name": "demo",
         "generated_at": "2026-03-20T19:35:19",
         "suppliers": ["alpha", "beta"],
+        "review_conclusion_table": {
+            "suspicious_clues": ["alpha 与 beta 存在 high 风险线索。"],
+            "exclusionary_factors": [],
+        },
+        "formal_report": {
+            "project_basic_info": {
+                "project_name": "测试项目",
+                "project_id": "P-001",
+                "purchaser": "测试采购人",
+                "agency": "测试代理机构",
+            },
+            "review_object_profiles": [
+                {"full_name": "阿尔法公司"},
+                {"full_name": "贝塔公司"},
+            ],
+            "review_sections": [
+                {"title": "报价情况比对", "points": ["阿尔法公司报价为 100000 元。"], "opinion": "报价差异不足以单独定性。"}
+            ],
+            "risk_summary": [],
+            "evidence_summary": [],
+        },
         "pairwise_assessments": [
             {
                 "supplier_a": "alpha",
@@ -209,7 +230,10 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     opinion = generate_review_opinion(report, opinion_mode="template")
     assert opinion["mode"] == "template"
     assert "围串标审查意见书" in opinion["document"]
-    assert "`alpha` 与 `beta`" in opinion["document"]
+    assert "## 一、项目概况" in opinion["document"]
+    assert "## 三、事实摘要" in opinion["document"]
+    assert "## 五、排除性因素" in opinion["document"]
+    assert "alpha 与 beta" in opinion["document"]
 
 
 def test_document_classifier_tags_known_document() -> None:

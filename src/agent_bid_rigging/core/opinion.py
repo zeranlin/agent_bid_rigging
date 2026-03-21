@@ -55,45 +55,57 @@ def _generate_template_opinion(report: dict) -> str:
         key=lambda item: item["risk_score"],
         default=None,
     )
-    conclusion = _conclusion_text(top_risk)
-    findings = _format_key_findings(report)
     formal_report = report.get("formal_report", {})
+    basic_info = formal_report.get("project_basic_info", {})
     risk_summary = formal_report.get("risk_summary", [])
     evidence_summary = formal_report.get("evidence_summary", [])
+    review_conclusion = report.get("review_conclusion_table", {})
+    supplier_names = _supplier_display_names(formal_report, report)
 
     lines = [
         "# 围串标审查意见书",
         "",
-        "## 一、审查概况",
+        "## 一、项目概况",
         "",
-        f"本次审查针对运行批次 `{report['run_name']}` 开展，系统共接收 1 份招标文件和 {len(report['suppliers'])} 份投标文件。",
-        f"审查生成时间为 {report['generated_at']}，审查对象为 {'、'.join(report['suppliers'])}。",
+        f"- 项目名称：{basic_info.get('project_name') or report['run_name']}",
+        f"- 项目编号：`{basic_info.get('project_id') or report['run_name']}`",
+        f"- 采购人：{basic_info.get('purchaser') or '未自动识别'}",
+        f"- 采购代理机构：{basic_info.get('agency') or '未自动识别'}",
+        f"- 审查对象：{'、'.join(supplier_names)}",
+        f"- 审查生成时间：{report['generated_at']}",
         "",
         "## 二、审查依据与方法",
         "",
-        "本意见书基于规则引擎自动抽取的客观信号形成，包括联系人信息、银行账号、地址、法定代表人、报价异常、非模板文本重合、结构同源、授权链和时间轨迹等线索。",
+        "本意见书基于采购人提供的招标文件、供应商提交的投标文件，以及系统自动抽取形成的结构化事实、风险评分和证据分级结果形成。",
+        "审查方法包括文本抽取、OCR 辅助识别、统一事实融合、两两比对评分和证据摘要归纳。",
         "",
-        "## 三、审查发现",
+        "## 三、事实摘要",
         "",
-        findings,
+        _format_fact_summary(formal_report, report),
         "",
-        "## 四、风险评分摘要",
+        "## 四、主要可疑线索",
+        "",
+        _format_suspicious_clues(review_conclusion, report),
+        "",
+        "## 五、排除性因素",
+        "",
+        _format_exclusionary_factors(review_conclusion, risk_summary),
+        "",
+        "## 六、风险评分与主要证据摘要",
         "",
         _format_risk_summary(risk_summary),
         "",
-        "## 五、主要证据摘要",
-        "",
         _format_evidence_summary(evidence_summary),
         "",
-        "## 六、初步审查意见",
+        "## 七、初步审查意见",
         "",
-        conclusion,
+        _conclusion_text(top_risk),
         "",
-        "## 七、建议措施",
+        "## 八、建议进一步核查事项",
         "",
         _recommendations(top_risk),
         "",
-        "## 八、说明",
+        "## 九、说明",
         "",
         "本意见书为自动生成的审查底稿，旨在为政府采购审查人员提供复核起点，不能替代最终行政认定或法律结论。",
     ]
@@ -137,7 +149,7 @@ def _build_llm_input(report: dict) -> str:
         [
             "",
             "写作要求:",
-            "1. 结构包括：审查概况、审查依据与方法、审查发现、风险评分摘要、主要证据摘要、初步审查意见、建议措施、说明。",
+            "1. 结构包括：项目概况、审查依据与方法、事实摘要、主要可疑线索、排除性因素、风险评分与主要证据摘要、初步审查意见、建议进一步核查事项、说明。",
             "2. 结论要与证据强度匹配。",
             "3. 明确指出高风险供应商对及其证据。",
             "4. 若风险较低，应说明暂未发现明显异常。",
@@ -163,6 +175,50 @@ def _format_key_findings(report: dict) -> str:
             sections.append(f"- {finding['title']}：{'；'.join(finding['evidence'])}")
         sections.append("")
     return "\n".join(sections).rstrip()
+
+
+def _supplier_display_names(formal_report: dict, report: dict) -> list[str]:
+    profiles = formal_report.get("review_object_profiles", [])
+    if profiles:
+        return [profile.get("full_name") or profile.get("supplier") for profile in profiles]
+    return report.get("suppliers", [])
+
+
+def _format_fact_summary(formal_report: dict, report: dict) -> str:
+    sections = formal_report.get("review_sections", [])
+    if not sections:
+        return _format_key_findings(report)
+    lines: list[str] = []
+    for section in sections:
+        lines.append(f"### {section['title']}")
+        for point in section.get("points", [])[:5]:
+            lines.append(f"- {point}")
+        if opinion := section.get("opinion"):
+            lines.append(f"- 审查意见：{opinion}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _format_suspicious_clues(review_conclusion: dict, report: dict) -> str:
+    clues = review_conclusion.get("suspicious_clues", [])
+    if not clues:
+        return "- 暂未发现需要单列说明的可疑线索。"
+    lines = [f"- {item}" for item in clues]
+    evidence_pairs = {item["pair"] for item in report.get("formal_report", {}).get("evidence_summary", [])}
+    for item in report["pairwise_assessments"]:
+        pair = f"{item['supplier_a']} 与 {item['supplier_b']}"
+        if item["risk_level"] in {"medium", "high", "critical"} and pair not in evidence_pairs and item["findings"]:
+            lines.append(f"- {pair}：{item['findings'][0]['title']}。")
+    return "\n".join(lines)
+
+
+def _format_exclusionary_factors(review_conclusion: dict, risk_summary: list[dict]) -> str:
+    factors = list(review_conclusion.get("exclusionary_factors", []))
+    if all(item.get("entity_link_score", 0) == 0 for item in risk_summary):
+        factors.append("各供应商之间未发现联系人、法定代表人、银行账户等核心身份要素的明显重合。")
+    if not factors:
+        return "- 暂无明确排除性因素。"
+    return "\n".join(f"- {item}" for item in factors)
 
 
 def _conclusion_text(top_risk: dict | None) -> str:
