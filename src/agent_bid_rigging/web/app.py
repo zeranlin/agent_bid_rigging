@@ -726,7 +726,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         report_path, report_label = _resolve_report_variant(run_dir, selected_report)
         report_content = None
         if report_path.exists():
-            report_content = _render_markdown(report_path.read_text(encoding="utf-8"))
+            report_content = _render_markdown(_normalize_report_markdown(report_path.read_text(encoding="utf-8")))
         return render_template_string(
             RUN_TEMPLATE,
             run_id=run_id,
@@ -1045,6 +1045,18 @@ def _render_markdown(text: str) -> str:
         return _postprocess_report_html(html)
     except Exception:  # noqa: BLE001
         return f"<pre>{escape(text)}</pre>"
+
+
+def _normalize_report_markdown(text: str) -> str:
+    lines = text.splitlines()
+    if not lines:
+        return text
+    first_line = lines[0].strip()
+    if re.fullmatch(r"\*\*[^*]+\*\*", first_line):
+        title = first_line[2:-2].strip()
+        if title in {"围串标审查意见书", "围串标审查报告"}:
+            lines[0] = f"# {title}"
+    return "\n".join(lines)
 
 
 def _postprocess_report_html(html: str) -> str:

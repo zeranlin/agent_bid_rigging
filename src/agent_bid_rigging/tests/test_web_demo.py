@@ -4,7 +4,13 @@ import io
 import json
 from pathlib import Path
 
-from agent_bid_rigging.web.app import _derive_supplier_name, _safe_upload_filename, _unique_upload_path, create_app
+from agent_bid_rigging.web.app import (
+    _derive_supplier_name,
+    _normalize_report_markdown,
+    _safe_upload_filename,
+    _unique_upload_path,
+    create_app,
+)
 
 
 def test_web_index_loads(tmp_path: Path) -> None:
@@ -204,6 +210,14 @@ def test_report_signoff_with_markdown_line_break_is_wrapped(tmp_path: Path) -> N
     assert response.status_code == 200
     assert "report-signoff" in body
     assert "审查日期：2026-03-21 21:25:48" in body
+
+
+def test_normalize_report_markdown_promotes_bold_title_to_heading() -> None:
+    text = "**围串标审查意见书**\n\n正文"
+
+    normalized = _normalize_report_markdown(text)
+
+    assert normalized.startswith("# 围串标审查意见书\n")
 
 
 def test_supplier_name_derivation() -> None:
