@@ -82,11 +82,15 @@ The command creates a timestamped directory under `runs/` containing:
 - `risk_score_table.json`
 - `review_conclusion_table.json`
 - `formal_report.json`
+- `formal_report.rule.json`
+- `formal_report.rule.md`
 - `formal_report.md`
 - `normalized/*.json`
 - `pairwise_report.json`
 - `summary.md`
 - `opinion.json`
+- `opinion.rule.json`
+- `opinion.rule.md`
 - `opinion.md`
 
 ## LLM review agent
@@ -123,6 +127,14 @@ agent-bid-rigging analyze \
 ```
 
 By default, when `--opinion-mode llm` is enabled, the harness waits for the full LLM review chain to finish before considering the run complete. This is the recommended setting for slow local models. If you explicitly want a non-blocking run that writes the rule-based artifacts first and lets LLM enhancement continue in the background, set `AGENT_BID_RIGGING_ASYNC_LLM=1`.
+
+When LLM review is enabled, the harness keeps both report variants:
+
+- `formal_report.rule.md`: deterministic rule/template report
+- `formal_report.llm.md`: LLM-enhanced report, written when LLM finishes successfully
+- `opinion.rule.md`: deterministic rule/template opinion
+- `opinion.llm.md`: LLM-enhanced opinion, written when LLM finishes successfully
+- `formal_report.md` and `opinion.md`: current default entrypoints, pointing to the best available version
 
 If `OPENAI_BASE_URL` ends with `/v1`, the harness automatically appends `/responses`.
 
