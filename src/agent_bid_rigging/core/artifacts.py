@@ -704,7 +704,7 @@ def build_formal_report_markdown(report: dict) -> str:
     lines.extend(
         [
             "",
-            f"审查人：政府采购投标文件审查  ",
+            f"审查人：人工智能审查  ",
             f"审查日期：{_format_generated_at(report['project_basic_info']['generated_at'])}",
         ]
     )

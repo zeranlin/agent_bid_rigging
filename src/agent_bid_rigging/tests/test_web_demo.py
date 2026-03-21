@@ -162,6 +162,28 @@ def test_artifact_download_supports_export(tmp_path: Path) -> None:
     assert "attachment" in response.headers.get("Content-Disposition", "")
 
 
+def test_report_signoff_is_wrapped_for_right_alignment(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "demo_case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "web_job.json").write_text(
+        json.dumps({"run_id": "demo_case", "state": "completed", "review_mode": "rule"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (run_dir / "formal_report.md").write_text(
+        "# 报告\n\n正文内容。\n\n审查人：人工智能审查  \n审查日期：2026-03-21 17:41:44\n",
+        encoding="utf-8",
+    )
+
+    response = client.get("/runs/demo_case")
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "report-signoff" in body
+    assert "审查人：人工智能审查" in body
+
+
 def test_supplier_name_derivation() -> None:
     assert _derive_supplier_name("投标文件-01-恒禾.zip", 1) == "恒禾"
     assert _derive_supplier_name("bid_beta.docx", 2) == "bid_beta"

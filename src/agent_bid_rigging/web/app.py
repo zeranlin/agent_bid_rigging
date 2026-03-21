@@ -485,6 +485,17 @@ RUN_TEMPLATE = """<!doctype html>
       gap: 10px;
       margin-bottom: 14px;
     }
+    .report-signoff {
+      margin-top: 2.8em;
+      display: grid;
+      justify-items: end;
+      color: #4d4034;
+      font-size: 15px;
+    }
+    .report-signoff p {
+      margin: 0.18em 0;
+      text-align: right;
+    }
     .report-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -1036,6 +1047,18 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _render_markdown(text: str) -> str:
     try:
-        return MARKDOWN_RENDERER.render(text)
+        html = MARKDOWN_RENDERER.render(text)
+        return _postprocess_report_html(html)
     except Exception:  # noqa: BLE001
         return f"<pre>{escape(text)}</pre>"
+
+
+def _postprocess_report_html(html: str) -> str:
+    pattern = re.compile(
+        r"<p>审查人：(?P<reviewer>[^<]+)</p>\s*<p>审查日期：(?P<date>[^<]+)</p>\s*$",
+        flags=re.S,
+    )
+    return pattern.sub(
+        r'<div class="report-signoff"><p>审查人：\g<reviewer></p><p>审查日期：\g<date></p></div>',
+        html,
+    )

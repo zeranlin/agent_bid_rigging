@@ -513,6 +513,7 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "medium 风险线索" not in markdown
     assert "总分为" not in markdown
     assert "审查日期：2026-03-21 10:00:00" in markdown
+    assert "审查人：人工智能审查" in markdown
     assert "相似片段示例" in markdown
     assert "培训特点是目的性、针对性、实效性和创新性" in markdown
     assert "附：文本重合证据附表" in markdown
