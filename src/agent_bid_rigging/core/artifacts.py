@@ -782,16 +782,17 @@ def _build_structure_summary(
     for row in high_pairs[:3]:
         pair_key = f"{row['supplier_a']} 与 {row['supplier_b']}"
         points.append(
-            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}存在非模板文本重合线索，相关内容相似程度较高。"
+            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}在实施方案、培训方案或售后服务等内容中存在相似文本片段。"
         )
         snippets = _text_overlap_snippets_for_pair(pair_key, evidence_grade_table)
         if snippets:
             points.append(
-                f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}重合片段示例："
+                f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}相似片段示例："
                 + "；".join(f"`{snippet}`" for snippet in snippets[:2])
                 + "。"
             )
-    opinion = "投标文件框架相似具有模板化解释空间，但已出现的非模板文本重合线索应列入进一步复核范围。"
+    points.append("上述相似表述多位于项目实施方案、培训方案和售后服务承诺部分，存在统一模板、行业常见写法或内部规范表述的可能。")
+    opinion = "投标文件框架相似具有模板化解释空间。对于相似文本片段，应结合主体关联、报价形成、授权链和原始电子文件等证据综合判断，不能仅凭文本相似直接作出定性。"
     return {"points": points, "opinion": opinion}
 
 
@@ -860,8 +861,9 @@ def _build_suspicious_points(
             if pair_evidence:
                 pair_evidence.sort(key=lambda item: (item["evidence_grade"], item["finding_title"]))
                 top_evidence = pair_evidence[0]
+                grade_text = _evidence_reason_to_plain_text(top_evidence.get("reason", "")) or "需要结合其他证据综合判断"
                 points.append(
-                    f"{pair_label}存在“{top_evidence['finding_title']}”证据，证据等级为 `{top_evidence['evidence_grade']}`。"
+                    f"{pair_label}存在需进一步复核的线索，当前属于{grade_text}（{top_evidence['evidence_grade']}级）。"
                 )
     return points
 
@@ -877,7 +879,7 @@ def _build_text_overlap_appendix(
         rows.append(
             {
                 "pair": _replace_supplier_names(item["pair"], supplier_name_map),
-                "finding_title": item["finding_title"],
+                "finding_title": _plain_text_overlap_title(item["finding_title"]),
                 "evidence_grade": item["evidence_grade"],
                 "grade_text": _evidence_reason_to_plain_text(item.get("reason", "")),
                 "snippets": _extract_overlap_snippets(item.get("evidence", [])),
@@ -934,6 +936,12 @@ def _evidence_reason_to_plain_text(reason: str) -> str:
     if not reason:
         return "需要结合其他证据综合判断"
     return reason.rstrip("。")
+
+
+def _plain_text_overlap_title(title: str) -> str:
+    if title == "仅两家共享的非模板文本重合":
+        return "两家投标文件存在相似文本片段"
+    return title
 
 
 def _format_overlap_location_markdown(location: dict) -> str:

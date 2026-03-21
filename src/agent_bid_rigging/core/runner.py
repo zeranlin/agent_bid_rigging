@@ -433,6 +433,7 @@ def _build_text_overlap_appendix_markdown(rows: list[dict]) -> str:
         lines.append(f"## {index}. {row['pair']}")
         lines.append(f"- 线索名称：{row['finding_title']}")
         lines.append(f"- 证据判断：{row['grade_text']}（{row['evidence_grade']}级）")
+        lines.append("- 说明：上述片段可能来自统一模板、行业常见写法或内部规范文本，需结合其他证据综合判断。")
         locations = row.get("locations", [])
         if locations:
             for item in locations:
