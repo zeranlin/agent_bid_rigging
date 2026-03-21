@@ -5,6 +5,8 @@ from pathlib import Path
 
 from agent_bid_rigging.capabilities import CapabilityContext
 from agent_bid_rigging.capabilities.ocr import OcrCapability, OcrRequest
+from agent_bid_rigging.capabilities.pdf_sectioning import PdfSectioningCapability
+from agent_bid_rigging.capabilities.pdf_tables import PdfTablesCapability
 from agent_bid_rigging.models import (
     ExtractedSignals,
     FactObservation,
@@ -94,13 +96,84 @@ def build_review_facts(
     bid_signals: list[ExtractedSignals],
     image_index_rows: list[dict],
     image_ocr_rows: list[dict],
+    section_catalog_rows: list[dict] | None = None,
+    table_extract_rows: list[dict] | None = None,
 ) -> ReviewFacts:
+    section_catalog_rows = section_catalog_rows or []
+    table_extract_rows = table_extract_rows or []
     return ReviewFacts(
         tender_document=tender_document,
-        suppliers=[_build_supplier_facts(signal, image_ocr_rows) for signal in bid_signals],
+        suppliers=[_build_supplier_facts(signal, image_ocr_rows, section_catalog_rows, table_extract_rows) for signal in bid_signals],
         image_index_rows=[dict(row) for row in image_index_rows],
         image_ocr_rows=[dict(row) for row in image_ocr_rows],
+        section_catalog_rows=[dict(row) for row in section_catalog_rows],
+        table_extract_rows=[dict(row) for row in table_extract_rows],
     )
+
+
+def run_pdf_section_collection(
+    capability: PdfSectioningCapability,
+    run_name: str,
+    role: str,
+    supplier: str | None,
+    source_path: str,
+    output_dir: Path,
+) -> dict:
+    result = capability.run(
+        CapabilityContext(
+            run_id=run_name,
+            source_path=source_path,
+            metadata={"role": role, "supplier": supplier},
+        ),
+        source_path=source_path,
+        output_dir=str(output_dir),
+        include_text=True,
+    )
+    payload = result.payload
+    rows = []
+    for section in payload.get("sections", []):
+        rows.append(
+            {
+                "role": role,
+                "supplier": supplier,
+                "source_path": source_path,
+                **section,
+            }
+        )
+    return {"section_catalog_rows": rows, "payload": payload}
+
+
+def run_pdf_table_collection(
+    capability: PdfTablesCapability,
+    run_name: str,
+    role: str,
+    supplier: str | None,
+    source_path: str,
+    output_dir: Path,
+    section_payload: dict,
+) -> dict:
+    result = capability.run(
+        CapabilityContext(
+            run_id=run_name,
+            source_path=source_path,
+            metadata={"role": role, "supplier": supplier},
+        ),
+        source_path=source_path,
+        output_dir=str(output_dir),
+        section_payload=section_payload,
+    )
+    payload = result.payload
+    rows = []
+    for row in payload.get("rows", []):
+        rows.append(
+            {
+                "role": role,
+                "supplier": supplier,
+                "source_path": source_path,
+                **row,
+            }
+        )
+    return {"table_extract_rows": rows, "payload": payload}
 
 
 def merge_ocr_into_signal(signal: ExtractedSignals, ocr_rows: list[dict]) -> None:
@@ -253,8 +326,15 @@ def normalize_text_field(value: object) -> str:
     return str(value).strip()
 
 
-def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) -> SupplierFacts:
+def _build_supplier_facts(
+    signal: ExtractedSignals,
+    image_ocr_rows: list[dict],
+    section_catalog_rows: list[dict],
+    table_extract_rows: list[dict],
+) -> SupplierFacts:
     supplier_rows = [row for row in image_ocr_rows if row.get("supplier") == signal.document.name]
+    supplier_section_rows = [row for row in section_catalog_rows if row.get("supplier") == signal.document.name]
+    supplier_table_rows = [row for row in table_extract_rows if row.get("supplier") == signal.document.name]
     company_name_candidates = _build_company_name_observations(signal)
     facts = SupplierFacts(
         supplier=signal.document.name,
@@ -274,7 +354,21 @@ def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) 
         addresses=_build_text_observations(signal.addresses, signal.document.path),
         bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
+        section_rows=[dict(row) for row in supplier_section_rows],
+        table_rows=[dict(row) for row in supplier_table_rows],
     )
+
+    for row in supplier_table_rows:
+        if row.get("field_name") == "bid_total_amount":
+            _append_capability_observation(
+                facts.bid_amounts,
+                normalize_text_field(row.get("value")),
+                source_document=row.get("source_path") or signal.document.path,
+                source_page=row.get("source_page"),
+                confidence=row.get("confidence"),
+                source_type="table",
+                prefer_primary=not facts.bid_amounts,
+            )
 
     for row in supplier_rows:
         fields = row.get("fields") or {}
@@ -462,6 +556,32 @@ def _append_observation(
         FactObservation(
             value=value,
             source_type="ocr",
+            source_document=source_document,
+            source_page=source_page,
+            confidence=confidence,
+            is_primary=prefer_primary,
+        )
+    )
+
+
+def _append_capability_observation(
+    bucket: list[FactObservation],
+    value: str,
+    source_document: str,
+    source_page: int | None,
+    confidence: float | None,
+    *,
+    source_type: str,
+    prefer_primary: bool,
+) -> None:
+    if not value:
+        return
+    if any(item.value == value for item in bucket):
+        return
+    bucket.append(
+        FactObservation(
+            value=value,
+            source_type=source_type,
             source_document=source_document,
             source_page=source_page,
             confidence=confidence,

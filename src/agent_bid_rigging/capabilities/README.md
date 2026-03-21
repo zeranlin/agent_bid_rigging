@@ -26,6 +26,7 @@ Examples:
 ## Initial planned modules
 
 - `pdf_sectioning/`: long PDF chapter segmentation and section-to-page mapping
+- `pdf_tables/`: long PDF quotation/opening/deviation/experience table extraction
 - `ocr/`: scanned PDF and image text extraction
 - `vision/`: image description and image-level field extraction
 - `metadata/`: file metadata and signature extraction

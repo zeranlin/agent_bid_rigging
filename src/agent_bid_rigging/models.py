@@ -79,6 +79,8 @@ class SupplierFacts:
     registration_numbers: list[FactObservation] = field(default_factory=list)
     authorization_mentions: list[FactObservation] = field(default_factory=list)
     timeline_modified_times: list[str] = field(default_factory=list)
+    section_rows: list[dict[str, Any]] = field(default_factory=list)
+    table_rows: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -92,6 +94,8 @@ class ReviewFacts:
     suppliers: list[SupplierFacts] = field(default_factory=list)
     image_index_rows: list[dict[str, Any]] = field(default_factory=list)
     image_ocr_rows: list[dict[str, Any]] = field(default_factory=list)
+    section_catalog_rows: list[dict[str, Any]] = field(default_factory=list)
+    table_extract_rows: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +103,8 @@ class ReviewFacts:
             "suppliers": [supplier.to_dict() for supplier in self.suppliers],
             "image_index_rows": self.image_index_rows,
             "image_ocr_rows": self.image_ocr_rows,
+            "section_catalog_rows": self.section_catalog_rows,
+            "table_extract_rows": self.table_extract_rows,
         }
 
 

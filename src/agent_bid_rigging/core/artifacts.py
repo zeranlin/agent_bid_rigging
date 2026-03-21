@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from difflib import SequenceMatcher
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path
@@ -437,6 +438,7 @@ def build_formal_report(
     bid_documents: list[dict] | None = None,
     price_analysis_table: list[dict] | None = None,
     structure_similarity_table: list[dict] | None = None,
+    section_similarity_table: list[dict] | None = None,
     authorization_chain_table: list[dict] | None = None,
     timeline_table: list[dict] | None = None,
     review_facts: ReviewFacts | None = None,
@@ -463,6 +465,7 @@ def build_formal_report(
     text_overlap_appendix = _build_text_overlap_appendix(evidence_grade_table, supplier_name_map)
     structure_summary = _build_structure_summary(
         structure_similarity_table or [],
+        section_similarity_table or [],
         risk_score_table,
         evidence_grade_table,
         supplier_name_map,
@@ -522,7 +525,8 @@ def build_formal_report(
         },
         "review_method": [
             "文件接收与建档",
-            "文本与元数据抽取",
+            "文本、章节与元数据抽取",
+            "关键报价表抽取",
             "结构与同源性比对",
             "报价、主体、授权与时间线分析",
             "证据分级与风险评分",
@@ -764,6 +768,7 @@ def _build_price_opinion(profiles: list[dict]) -> str:
 
 def _build_structure_summary(
     structure_similarity_table: list[dict],
+    section_similarity_table: list[dict],
     risk_score_table: list[dict],
     evidence_grade_table: list[dict],
     supplier_name_map: dict[str, str] | None = None,
@@ -791,6 +796,18 @@ def _build_structure_summary(
                 + "；".join(f"`{snippet}`" for snippet in snippets[:2])
                 + "。"
             )
+    for row in sorted(section_similarity_table, key=lambda item: item["similarity"], reverse=True)[:4]:
+        if row["similarity"] < 0.75:
+            continue
+        family_text = {
+            "technical_plan": "技术方案",
+            "implementation_plan": "实施方案",
+            "training_plan": "培训方案",
+        }.get(row["section_family"], row["section_family"])
+        points.append(
+            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}的{family_text}章节存在较高相似度，"
+            f"相似度约为{row['similarity']:.0%}，对应起始页分别为第{row['page_a']}页和第{row['page_b']}页。"
+        )
     points.append("上述相似表述多位于项目实施方案、培训方案和售后服务承诺部分，存在统一模板、行业常见写法或内部规范表述的可能。")
     opinion = "投标文件框架相似具有模板化解释空间。对于相似文本片段，应结合主体关联、报价形成、授权链和原始电子文件等证据综合判断，不能仅凭文本相似直接作出定性。"
     return {"points": points, "opinion": opinion}
@@ -1189,6 +1206,33 @@ def build_text_similarity_table(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
+def build_section_similarity_table(review_facts: ReviewFacts) -> list[dict]:
+    rows: list[dict] = []
+    target_families = ("technical_plan", "implementation_plan", "training_plan")
+    for left, right in combinations(review_facts.suppliers, 2):
+        for family in target_families:
+            left_text = _family_text(left, family)
+            right_text = _family_text(right, family)
+            if not left_text or not right_text:
+                continue
+            similarity = round(SequenceMatcher(None, _normalize_similarity_text(left_text), _normalize_similarity_text(right_text)).ratio(), 4)
+            rows.append(
+                {
+                    "supplier_a": left.supplier,
+                    "supplier_b": right.supplier,
+                    "section_family": family,
+                    "title_a": _family_title(left, family),
+                    "title_b": _family_title(right, family),
+                    "page_a": _family_start_page(left, family),
+                    "page_b": _family_start_page(right, family),
+                    "similarity": similarity,
+                    "chars_a": len(left_text),
+                    "chars_b": len(right_text),
+                }
+            )
+    return rows
+
+
 def build_shared_error_table(signals: list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
     for left, right in combinations(signals, 2):
@@ -1204,6 +1248,30 @@ def build_shared_error_table(signals: list[ExtractedSignals]) -> list[dict]:
             }
         )
     return rows
+
+
+def _family_rows(supplier: SupplierFacts, family: str) -> list[dict]:
+    return [row for row in supplier.section_rows if row.get("family") == family]
+
+
+def _family_text(supplier: SupplierFacts, family: str) -> str:
+    return "\n".join(row.get("text", "") for row in _family_rows(supplier, family)).strip()
+
+
+def _family_title(supplier: SupplierFacts, family: str) -> str | None:
+    rows = _family_rows(supplier, family)
+    return rows[0].get("title") if rows else None
+
+
+def _family_start_page(supplier: SupplierFacts, family: str) -> int | None:
+    rows = _family_rows(supplier, family)
+    if not rows:
+        return None
+    return rows[0].get("start_page")
+
+
+def _normalize_similarity_text(text: str) -> str:
+    return re.sub(r"\s+", "", text[:20000])
 
 
 def build_authorization_chain_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:

@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 from agent_bid_rigging.capabilities.ocr import OcrCapability
+from agent_bid_rigging.capabilities.pdf_sectioning import PdfSectioningCapability
+from agent_bid_rigging.capabilities.pdf_tables import PdfTablesCapability
 from agent_bid_rigging.core.artifacts import (
     build_authorization_chain_table,
     build_case_manifest,
@@ -22,6 +24,7 @@ from agent_bid_rigging.core.artifacts import (
     build_price_analysis_table,
     build_review_conclusion_table,
     build_risk_score_table,
+    build_section_similarity_table,
     build_source_file_index,
     build_structure_similarity_table,
     build_shared_error_table,
@@ -34,6 +37,8 @@ from agent_bid_rigging.core.fusion import (
     build_review_facts,
     merge_ocr_into_signal,
     renumber_ocr_rows,
+    run_pdf_section_collection,
+    run_pdf_table_collection,
     run_ocr_collection,
 )
 from agent_bid_rigging.core.llm_review import generate_llm_review_layers
@@ -66,6 +71,8 @@ def run_review(
     bid_signals_by_supplier: dict[str, ExtractedSignals] = {}
     image_index_rows: list[dict] = []
     image_ocr_rows: list[dict] = []
+    section_catalog_rows: list[dict] = []
+    table_extract_rows: list[dict] = []
 
     for supplier_name, path in bids.items():
         loaded = load_document(supplier_name, "bid", path)
@@ -83,6 +90,29 @@ def run_review(
         async_llm=_use_async_llm(),
     )
     ocr_capability = OcrCapability() if strategy.enable_ocr else None
+    pdf_sectioning_capability = PdfSectioningCapability()
+    pdf_tables_capability = PdfTablesCapability()
+
+    if Path(tender_path).suffix.lower() == ".pdf":
+        tender_sections = run_pdf_section_collection(
+            capability=pdf_sectioning_capability,
+            run_name=run_name,
+            role="tender",
+            supplier=None,
+            source_path=tender_path,
+            output_dir=base_dir / "sectioning" / "tender",
+        )
+        section_catalog_rows.extend(tender_sections["section_catalog_rows"])
+        tender_tables = run_pdf_table_collection(
+            capability=pdf_tables_capability,
+            run_name=run_name,
+            role="tender",
+            supplier=None,
+            source_path=tender_path,
+            output_dir=base_dir / "tables" / "tender",
+            section_payload=tender_sections["payload"],
+        )
+        table_extract_rows.extend(tender_tables["table_extract_rows"])
 
     if ocr_capability is not None and strategy.tender_ocr.enabled:
         tender_ocr = run_ocr_collection(
@@ -100,6 +130,26 @@ def run_review(
     for supplier_name, path in bids.items():
         bid_ocr_plan = strategy.bid_ocr[supplier_name]
         signals = bid_signals_by_supplier[supplier_name]
+        if Path(path).suffix.lower() == ".pdf":
+            bid_sections = run_pdf_section_collection(
+                capability=pdf_sectioning_capability,
+                run_name=run_name,
+                role="bid",
+                supplier=supplier_name,
+                source_path=path,
+                output_dir=base_dir / "sectioning" / supplier_name,
+            )
+            section_catalog_rows.extend(bid_sections["section_catalog_rows"])
+            bid_tables = run_pdf_table_collection(
+                capability=pdf_tables_capability,
+                run_name=run_name,
+                role="bid",
+                supplier=supplier_name,
+                source_path=path,
+                output_dir=base_dir / "tables" / supplier_name,
+                section_payload=bid_sections["payload"],
+            )
+            table_extract_rows.extend(bid_tables["table_extract_rows"])
         if ocr_capability is not None and bid_ocr_plan.enabled:
             bid_ocr = run_ocr_collection(
                 capability=ocr_capability,
@@ -130,8 +180,16 @@ def run_review(
     text_similarity_table = build_text_similarity_table(bid_signals)
     shared_error_table = build_shared_error_table(bid_signals)
     renumber_ocr_rows(image_index_rows, image_ocr_rows)
-    review_facts = build_review_facts(tender_doc, bid_signals, image_index_rows, image_ocr_rows)
+    review_facts = build_review_facts(
+        tender_doc,
+        bid_signals,
+        image_index_rows,
+        image_ocr_rows,
+        section_catalog_rows,
+        table_extract_rows,
+    )
     assessments = assess_pairs(review_facts)
+    section_similarity_table = build_section_similarity_table(review_facts)
     assessment_dicts = [assessment.to_dict() for assessment in assessments]
     extracted_file_index = build_extracted_file_index(review_facts)
     document_catalog = build_document_catalog(review_facts)
@@ -160,6 +218,7 @@ def run_review(
         bid_documents=[signal.to_dict() for signal in bid_signals],
         price_analysis_table=price_analysis_table,
         structure_similarity_table=structure_similarity_table,
+        section_similarity_table=section_similarity_table,
         authorization_chain_table=authorization_chain_table,
         timeline_table=timeline_table,
         review_facts=review_facts,
@@ -185,11 +244,14 @@ def run_review(
         "duplicate_detection_table": duplicate_detection_table,
         "text_similarity_table": text_similarity_table,
         "shared_error_table": shared_error_table,
+        "section_similarity_table": section_similarity_table,
         "authorization_chain_table": authorization_chain_table,
         "license_match_table": license_match_table,
         "timeline_table": timeline_table,
         "image_index": image_index_rows,
         "image_ocr_table": image_ocr_rows,
+        "section_catalog": section_catalog_rows,
+        "table_extract_rows": table_extract_rows,
         "review_facts": review_facts.to_dict(),
         "evidence_grade_table": evidence_grade_table,
         "risk_score_table": risk_score_table,
@@ -211,11 +273,14 @@ def run_review(
     _write_json(base_dir / "duplicate_detection_table.json", {"rows": duplicate_detection_table})
     _write_json(base_dir / "text_similarity_table.json", {"rows": text_similarity_table})
     _write_json(base_dir / "shared_error_table.json", {"rows": shared_error_table})
+    _write_json(base_dir / "section_similarity_table.json", {"rows": section_similarity_table})
     _write_json(base_dir / "authorization_chain_table.json", {"rows": authorization_chain_table})
     _write_json(base_dir / "license_match_table.json", {"rows": license_match_table})
     _write_json(base_dir / "timeline_table.json", {"rows": timeline_table})
     _write_json(base_dir / "image_index.json", {"rows": image_index_rows})
     _write_json(base_dir / "image_ocr_table.json", {"rows": image_ocr_rows})
+    _write_json(base_dir / "section_catalog.json", {"rows": section_catalog_rows})
+    _write_json(base_dir / "table_extract_rows.json", {"rows": table_extract_rows})
     _write_json(base_dir / "evidence_grade_table.json", {"rows": evidence_grade_table})
     _write_json(base_dir / "risk_score_table.json", {"rows": risk_score_table})
     _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
