@@ -134,25 +134,6 @@ def run_review(
         "review_conclusion_table": review_conclusion_table,
         "formal_report": formal_report,
     }
-    llm_review_layers = None
-    llm_review_error = None
-    try:
-        llm_review_layers = generate_llm_review_layers(
-            report,
-            formal_report_markdown=formal_report_markdown,
-            opinion_mode=opinion_mode,
-        )
-    except Exception as exc:  # noqa: BLE001
-        llm_review_error = str(exc)
-
-    if llm_review_layers and llm_review_layers.get("section_report"):
-        formal_report_markdown = llm_review_layers["section_report"]
-    if llm_review_layers:
-        report["llm_review_layers"] = llm_review_layers
-    if llm_review_error:
-        report["llm_review_error"] = llm_review_error
-
-    opinion = generate_review_opinion(report, opinion_mode=opinion_mode, llm_review_layers=llm_review_layers)
 
     _write_json(base_dir / "manifest.json", case_manifest)
     _write_json(base_dir / "case_manifest.json", case_manifest)
@@ -173,6 +154,44 @@ def run_review(
     _write_json(base_dir / "risk_score_table.json", {"rows": risk_score_table})
     _write_json(base_dir / "review_conclusion_table.json", review_conclusion_table)
     _write_json(base_dir / "formal_report.json", formal_report)
+    (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
+    (base_dir / "formal_report.md").write_text(formal_report_markdown, encoding="utf-8")
+
+    llm_status = {
+        "requested_mode": opinion_mode,
+        "state": "not-requested" if opinion_mode == "template" else "running",
+    }
+    _write_json(base_dir / "llm_status.json", llm_status)
+
+    llm_review_layers = None
+    llm_review_error = None
+    try:
+        llm_review_layers = generate_llm_review_layers(
+            report,
+            formal_report_markdown=formal_report_markdown,
+            opinion_mode=opinion_mode,
+        )
+    except Exception as exc:  # noqa: BLE001
+        llm_review_error = str(exc)
+
+    if llm_review_layers and llm_review_layers.get("section_report"):
+        formal_report_markdown = llm_review_layers["section_report"]
+    if llm_review_layers:
+        report["llm_review_layers"] = llm_review_layers
+        llm_status = {
+            "requested_mode": opinion_mode,
+            "state": "completed",
+            "generated_at": llm_review_layers.get("generated_at"),
+        }
+    if llm_review_error:
+        report["llm_review_error"] = llm_review_error
+        llm_status = {
+            "requested_mode": opinion_mode,
+            "state": "failed",
+            "error": llm_review_error,
+        }
+
+    opinion = generate_review_opinion(report, opinion_mode=opinion_mode, llm_review_layers=llm_review_layers)
     if llm_review_layers:
         _write_json(base_dir / "llm_review_layers.json", llm_review_layers)
         (base_dir / "llm_evidence_interpretation.md").write_text(
@@ -187,8 +206,8 @@ def run_review(
             llm_review_layers["conclusion_memo"],
             encoding="utf-8",
         )
+    _write_json(base_dir / "llm_status.json", llm_status)
     _write_json(base_dir / "pairwise_report.json", report)
-    (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
     (base_dir / "formal_report.md").write_text(formal_report_markdown, encoding="utf-8")
     _write_json(base_dir / "opinion.json", opinion)
     (base_dir / "opinion.md").write_text(opinion["document"], encoding="utf-8")
