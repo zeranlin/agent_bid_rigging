@@ -458,10 +458,11 @@ def build_formal_report(
             timeline_table or [],
         )
     )
-    structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table)
-    suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table)
+    supplier_name_map = {profile["supplier"]: profile["full_name"] for profile in supplier_profiles}
+    structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table, supplier_name_map)
+    suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table, supplier_name_map)
     exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table)
-    further_checks = _build_further_checks(top_pair)
+    further_checks = _build_further_checks(top_pair, supplier_name_map)
     evidence_summary = evidence_grade_table[:12]
     fact_table = [
         {"序号": index, "事实内容": item, "性质": "已识别事实"}
@@ -559,14 +560,14 @@ def build_formal_report(
         "clue_table": clue_table,
         "exclusion_table": exclusion_table,
         "risk_table": risk_table,
-        "preliminary_conclusion": _final_conclusion(top_pair),
+        "preliminary_conclusion": _final_conclusion(top_pair, supplier_name_map),
         "follow_up_recommendations": review_conclusion_table["recommendations"],
         "suspicious_points": suspicious_points,
         "exclusion_points": exclusion_points,
         "further_checks": further_checks,
         "audit_opinion": {
             "opinion_type": "自动审查意见",
-            "main_statement": _final_conclusion(top_pair),
+            "main_statement": _final_conclusion(top_pair, supplier_name_map),
             "opinion_note": "现有结论系基于文件内容自动形成的复核意见，建议结合原始电子文件、外围关联信息和人工核验进一步确认。",
         },
         "evidence_summary": evidence_summary,
@@ -733,7 +734,11 @@ def _build_price_opinion(profiles: list[dict]) -> str:
     return "存在报价完全一致或高度接近情形，建议结合其他证据进一步核查。"
 
 
-def _build_structure_summary(structure_similarity_table: list[dict], risk_score_table: list[dict]) -> dict:
+def _build_structure_summary(
+    structure_similarity_table: list[dict],
+    risk_score_table: list[dict],
+    supplier_name_map: dict[str, str] | None = None,
+) -> dict:
     if not structure_similarity_table:
         return {
             "points": ["当前未形成可比较的文档结构分析结果。"],
@@ -747,7 +752,7 @@ def _build_structure_summary(structure_similarity_table: list[dict], risk_score_
     ]
     for row in high_pairs[:3]:
         points.append(
-            f"{row['supplier_a']}与{row['supplier_b']}存在非模板文本重合线索，主评分中对应文本相似分为 `{row['technical_text_score']}`。"
+            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}存在非模板文本重合线索，主评分中对应文本相似分为 `{row['technical_text_score']}`。"
         )
     opinion = "投标文件框架相似具有模板化解释空间，但已出现的非模板文本重合线索应列入进一步复核范围。"
     return {"points": points, "opinion": opinion}
@@ -790,22 +795,39 @@ def _build_timeline_points(profiles: list[dict]) -> list[str]:
 
 
 def _build_timeline_opinion(profiles: list[dict]) -> str:
-    if any("集中生成" in profile["timeline_summary"] for profile in profiles):
+    if any(profile["timeline_summary"] == "存在集中生成迹象" for profile in profiles):
         return "部分供应商文件存在集中生成迹象，但仍需结合平台日志、原始文件元数据等进一步判断是否属于异常同源制作。"
+    if all(profile["timeline_summary"] == "无组件级时间信息" for profile in profiles):
+        return "现有材料未提取到足够的组件级时间信息，暂不能仅依据时间特征作出倾向性判断。"
     return "目前未发现足以证明同一主体集中制作全部投标文件的明确时间线证据。"
 
 
-def _build_suspicious_points(risk_score_table: list[dict], evidence_grade_table: list[dict]) -> list[str]:
+def _build_suspicious_points(
+    risk_score_table: list[dict],
+    evidence_grade_table: list[dict],
+    supplier_name_map: dict[str, str] | None = None,
+) -> list[str]:
     points: list[str] = []
-    high_evidence = [row for row in evidence_grade_table if row["evidence_grade"] in {"A", "B"}]
+    evidence_by_pair: dict[str, list[dict]] = {}
+    for row in evidence_grade_table:
+        evidence_by_pair.setdefault(row["pair"], []).append(row)
     for row in risk_score_table:
         if row["risk_level"] in {"medium", "high", "critical"}:
+            pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
             points.append(
-                f"{row['supplier_a']}与{row['supplier_b']}之间存在 `{row['risk_level']}` 风险线索，总分为 `{row['total_score']}`。"
+                f"{pair_label}之间存在 `{row['risk_level']}` 风险线索，总分为 `{row['total_score']}`。"
             )
-    if high_evidence:
-        sample = high_evidence[0]
-        points.append(f"{sample['pair']}存在“{sample['finding_title']}”证据，证据等级为 `{sample['evidence_grade']}`。")
+            evidence_key = f"{row['supplier_a']} 与 {row['supplier_b']}"
+            pair_evidence = [
+                item for item in evidence_by_pair.get(evidence_key, [])
+                if item["evidence_grade"] in {"A", "B", "C"}
+            ]
+            if pair_evidence:
+                pair_evidence.sort(key=lambda item: (item["evidence_grade"], item["finding_title"]))
+                top_evidence = pair_evidence[0]
+                points.append(
+                    f"{pair_label}存在“{top_evidence['finding_title']}”证据，证据等级为 `{top_evidence['evidence_grade']}`。"
+                )
     return points
 
 
@@ -818,10 +840,10 @@ def _build_exclusion_points(review_conclusion_table: dict, risk_score_table: lis
     return points
 
 
-def _build_further_checks(top_pair: dict | None) -> list[str]:
+def _build_further_checks(top_pair: dict | None, supplier_name_map: dict[str, str] | None = None) -> list[str]:
     focus = ""
     if top_pair:
-        focus = f"重点核查 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 的"
+        focus = f"重点核查 {_pair_display(top_pair['supplier_a'], top_pair['supplier_b'], supplier_name_map)}的"
     return [
         f"核查采购平台后台日志、投标客户端登录 IP、上传终端和操作时间轨迹，{focus}上传行为是否存在重合。".strip(),
         "核查 CA 证书申请、使用人、办证联系人、证书设备信息是否存在关联。",
@@ -1342,13 +1364,20 @@ def _risk_level_from_total(total: int) -> str:
     return "low"
 
 
-def _final_conclusion(top_pair: dict | None) -> str:
+def _final_conclusion(top_pair: dict | None, supplier_name_map: dict[str, str] | None = None) -> str:
     if not top_pair:
         return "现有证据不足以形成实质性审查判断。"
+    pair_label = _pair_display(top_pair["supplier_a"], top_pair["supplier_b"], supplier_name_map)
     if top_pair["risk_level"] == "critical":
-        return f"存在较强可疑线索，建议对 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 进一步取证。"
+        return f"存在较强可疑线索，建议对 {pair_label}进一步取证。"
     if top_pair["risk_level"] == "high":
-        return f"存在较强可疑线索，建议重点复核 {top_pair['supplier_a']} 与 {top_pair['supplier_b']}。"
+        return f"存在较强可疑线索，建议重点复核 {pair_label}。"
     if top_pair["risk_level"] == "medium":
-        return f"存在可疑线索，建议对 {top_pair['supplier_a']} 与 {top_pair['supplier_b']} 补充核查。"
+        return f"存在可疑线索，建议对 {pair_label}补充核查。"
     return "未发现明显异常。"
+
+
+def _pair_display(left: str, right: str, supplier_name_map: dict[str, str] | None = None) -> str:
+    if not supplier_name_map:
+        return f"{left}与{right}"
+    return f"{supplier_name_map.get(left, left)}与{supplier_name_map.get(right, right)}"

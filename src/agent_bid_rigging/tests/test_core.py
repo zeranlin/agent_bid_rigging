@@ -292,6 +292,55 @@ def test_evidence_grading_and_formal_report() -> None:
     assert report["audit_opinion"]["main_statement"]
 
 
+def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent() -> None:
+    risk_rows = [
+        {"supplier_a": "恒禾", "supplier_b": "华康", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
+        {"supplier_a": "恒禾", "supplier_b": "唯美", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
+        {"supplier_a": "华康", "supplier_b": "唯美", "total_score": 0, "risk_level": "low", "technical_text_score": 0, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
+    ]
+    evidence_rows = [
+        {"pair": "恒禾 与 华康", "finding_title": "仅两家共享的非模板文本重合", "evidence_grade": "B"},
+        {"pair": "恒禾 与 唯美", "finding_title": "仅两家共享的非模板文本重合", "evidence_grade": "B"},
+    ]
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-2",
+            "generated_at": "2026-03-21T10:00:00",
+            "input_summary": {"supplier_names": ["恒禾", "华康", "唯美"], "tender_count": 1, "bid_count": 3},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table={
+            "verified_facts": [
+                "恒禾 与 华康：仅两家共享的非模板文本重合。",
+                "恒禾 与 唯美：仅两家共享的非模板文本重合。",
+            ],
+            "suspicious_clues": [
+                "恒禾 与 华康 存在 medium 风险线索，分值 30。",
+                "恒禾 与 唯美 存在 medium 风险线索，分值 30。",
+            ],
+            "exclusionary_factors": ["华康 与 唯美 未发现明显异常信号。"],
+            "recommendations": ["补充核查。"],
+        },
+        evidence_grade_table=evidence_rows,
+        risk_score_table=risk_rows,
+        timeline_table=[
+            {"supplier": "恒禾", "summary": "未见明显集中生成特征"},
+            {"supplier": "华康", "summary": "未见明显集中生成特征"},
+            {"supplier": "唯美", "summary": "未见明显集中生成特征"},
+        ],
+        bid_documents=[
+            {"document": {"name": "恒禾", "text": "内蒙古恒禾创业信息科技服务有限公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+            {"document": {"name": "华康", "text": "华康君安（北京）科技有限公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+            {"document": {"name": "唯美", "text": "内蒙古维美科技有限公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+        ],
+    )
+    markdown = build_formal_report_markdown(report)
+    assert "内蒙古恒禾创业信息科技服务有限公司与华康君安（北京）科技有限公司" in markdown
+    assert "内蒙古恒禾创业信息科技服务有限公司与内蒙古维美科技有限公司" in markdown
+    assert "部分供应商文件存在集中生成迹象" not in markdown
+
+
 def test_risk_score_table_matches_pairwise_assessment() -> None:
     assessment = assess_pairs(
         [
