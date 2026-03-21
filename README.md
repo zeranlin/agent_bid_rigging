@@ -74,6 +74,19 @@ Open `http://127.0.0.1:8000` to:
 - watch run state for slow local-LLM cases
 - open `formal_report`, `opinion`, and key evidence tables from the browser
 
+OCR capability demo:
+
+```bash
+agent-bid-rigging ocr \
+  --input /path/to/proof.pdf \
+  --output-dir runs/ocr_demo
+```
+
+This command extracts embedded images from a PDF or accepts a standalone image, then uses the configured multimodal model to describe image content and write:
+
+- `ocr_result.json`
+- `ocr_result.md`
+
 The command creates a timestamped directory under `runs/` containing:
 
 - `manifest.json`

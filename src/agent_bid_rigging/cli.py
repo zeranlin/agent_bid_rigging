@@ -6,6 +6,8 @@ from pathlib import Path
 
 import click
 
+from agent_bid_rigging.capabilities import CapabilityContext
+from agent_bid_rigging.capabilities.ocr import OcrCapability
 from agent_bid_rigging.core.runner import finish_llm_review, run_review
 from agent_bid_rigging.web import run_demo_server
 
@@ -116,6 +118,32 @@ def llm_status(
 def web_demo(host: str, port: int, base_dir: str | None) -> None:
     click.echo(f"启动演示页面: http://{host}:{port}")
     run_demo_server(host=host, port=port, base_dir=base_dir)
+
+
+@cli.command("ocr")
+@click.option("--input", "input_path", required=True, type=click.Path(exists=True))
+@click.option("--output-dir", type=click.Path(), default=None)
+@click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
+@click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
+@click.pass_context
+def ocr(
+    ctx: click.Context,
+    input_path: str,
+    output_dir: str | None,
+    json_flag: bool,
+    json_flag_compat: bool,
+) -> None:
+    capability = OcrCapability()
+    result = capability.run(
+        CapabilityContext(source_path=input_path),
+        source_path=input_path,
+        output_dir=output_dir,
+    )
+    payload = result.to_dict()
+    if ctx.obj.get("json_output") or json_flag or json_flag_compat:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(f"OCR 完成，识别图片数: {payload['payload']['image_count']}")
 
 
 @cli.command()

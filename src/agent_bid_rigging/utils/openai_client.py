@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import mimetypes
+from pathlib import Path
+from typing import Any
 from dataclasses import dataclass
+from base64 import b64encode
 from urllib.parse import urlparse
 from urllib import error, request
 
@@ -44,11 +48,17 @@ class OpenAIResponsesClient:
         )
 
     def generate_markdown(self, system_prompt: str, user_prompt: str) -> str:
+        return self.generate_text(
+            system_prompt=system_prompt,
+            user_contents=[{"type": "input_text", "text": user_prompt}],
+        )
+
+    def generate_text(self, system_prompt: str, user_contents: list[dict[str, Any]]) -> str:
         payload = {
             "model": self.model,
             "input": [
                 {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
-                {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
+                {"role": "user", "content": user_contents},
             ],
         }
         if self.reasoning_effort:
@@ -82,6 +92,69 @@ class OpenAIResponsesClient:
                         return maybe_text.strip()
         raise RuntimeError("OpenAI Responses API returned no text output.")
 
+    def image_content_from_path(self, path: str | Path) -> dict[str, str]:
+        file_path = Path(path)
+        mime_type, _ = mimetypes.guess_type(file_path.name)
+        mime_type = mime_type or "image/png"
+        encoded = b64encode(file_path.read_bytes()).decode("ascii")
+        return {
+            "type": "input_image",
+            "image_url": f"data:{mime_type};base64,{encoded}",
+        }
+
+    def generate_chat_vision_text(self, system_prompt: str, user_prompt: str, image_path: str | Path) -> str:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": self.image_content_from_path(image_path)["image_url"]},
+                        },
+                    ],
+                },
+            ],
+            "max_tokens": 1200,
+        }
+        if self.no_thinking:
+            payload["enable_thinking"] = False
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        req = request.Request(_chat_completions_url(self.base_url), data=body, headers=headers, method="POST")
+        try:
+            with request.urlopen(req, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"OpenAI chat completions request failed: HTTP {exc.code}: {detail}") from exc
+        except error.URLError as exc:
+            raise RuntimeError(f"OpenAI chat completions request failed: {exc.reason}") from exc
+
+        message = ((data.get("choices") or [{}])[0]).get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if item.get("type") == "text" and item.get("text"):
+                    parts.append(item["text"])
+            if parts:
+                return "\n".join(parts).strip()
+
+        reasoning = message.get("reasoning")
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning.strip()
+
+        raise RuntimeError("Chat completions API returned no usable text output.")
+
 
 def _normalize_base_url(raw_url: str) -> str:
     url = raw_url.strip()
@@ -104,6 +177,20 @@ def _normalize_base_url(raw_url: str) -> str:
 
     normalized = parsed._replace(path=final_path, params="", query="", fragment="")
     return normalized.geturl()
+
+
+def _chat_completions_url(responses_url: str) -> str:
+    parsed = urlparse(responses_url)
+    path = parsed.path.rstrip("/")
+    if path.endswith("/responses"):
+        path = f"{path[: -len('/responses')]}/chat/completions"
+    elif path.endswith("/v1"):
+        path = f"{path}/chat/completions"
+    elif not path:
+        path = "/v1/chat/completions"
+    else:
+        path = f"{path}/chat/completions"
+    return parsed._replace(path=path, params="", query="", fragment="").geturl()
 
 
 def _env_truthy(raw: str) -> bool:
