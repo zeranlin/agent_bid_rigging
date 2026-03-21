@@ -126,7 +126,14 @@ def _pair_only_line_findings(
         PairwiseFinding(
             title="仅两家共享的非模板文本重合",
             weight=weight,
-            evidence=[f"重合行: {line}" for line in overlap[:5]],
+            evidence=[
+                _format_overlap_evidence(line, left, right)
+                for line in overlap[:5]
+            ],
+            evidence_details=[
+                _build_overlap_evidence_detail(line, left, right)
+                for line in overlap[:5]
+            ],
         )
     ]
 
@@ -157,6 +164,61 @@ def _candidate_overlap_lines(item: ExtractedSignals | SupplierFacts) -> list[str
     if isinstance(item, SupplierFacts):
         return item.candidate_overlap_lines
     return item.candidate_overlap_lines
+
+
+def _candidate_overlap_refs(item: ExtractedSignals | SupplierFacts) -> dict[str, list[dict]]:
+    if isinstance(item, SupplierFacts):
+        return item.candidate_overlap_refs
+    return item.candidate_overlap_refs
+
+
+def _build_overlap_evidence_detail(
+    line: str,
+    left: ExtractedSignals | SupplierFacts,
+    right: ExtractedSignals | SupplierFacts,
+) -> dict:
+    left_ref = _candidate_overlap_refs(left).get(line, [{}])[0]
+    right_ref = _candidate_overlap_refs(right).get(line, [{}])[0]
+    return {
+        "snippet": line,
+        "left": {
+            "supplier": _supplier_name(left),
+            **left_ref,
+        },
+        "right": {
+            "supplier": _supplier_name(right),
+            **right_ref,
+        },
+    }
+
+
+def _format_overlap_evidence(
+    line: str,
+    left: ExtractedSignals | SupplierFacts,
+    right: ExtractedSignals | SupplierFacts,
+) -> str:
+    detail = _build_overlap_evidence_detail(line, left, right)
+    return (
+        f"重合行: {line} | "
+        f"{_supplier_name(left)}来源: {_format_ref(detail['left'])} | "
+        f"{_supplier_name(right)}来源: {_format_ref(detail['right'])}"
+    )
+
+
+def _format_ref(ref: dict) -> str:
+    source_document = ref.get("source_document") or "未知文件"
+    source_page = ref.get("source_page")
+    source_line = ref.get("source_line")
+    component_title = ref.get("component_title") or ""
+    location_parts = []
+    if source_page is not None:
+        location_parts.append(f"第{source_page}页")
+    if source_line is not None:
+        location_parts.append(f"第{source_line}行")
+    location = "，".join(location_parts) if location_parts else "位置未定位"
+    if component_title:
+        return f"{source_document} / {component_title} / {location}"
+    return f"{source_document} / {location}"
 
 
 def _phones(item: ExtractedSignals | SupplierFacts) -> list[str]:

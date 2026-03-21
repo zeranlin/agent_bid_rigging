@@ -33,6 +33,7 @@ class ExtractedSignals:
     non_tender_lines: list[str] = field(default_factory=list)
     rare_line_fingerprints: dict[str, str] = field(default_factory=dict)
     candidate_overlap_lines: list[str] = field(default_factory=list)
+    candidate_overlap_refs: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -63,6 +64,7 @@ class SupplierFacts:
     non_tender_lines: list[str] = field(default_factory=list)
     rare_line_fingerprints: dict[str, str] = field(default_factory=dict)
     candidate_overlap_lines: list[str] = field(default_factory=list)
+    candidate_overlap_refs: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     company_names: list[FactObservation] = field(default_factory=list)
     phones: list[FactObservation] = field(default_factory=list)
     emails: list[FactObservation] = field(default_factory=list)
@@ -105,6 +107,7 @@ class PairwiseFinding:
     title: str
     weight: int
     evidence: list[str]
+    evidence_details: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

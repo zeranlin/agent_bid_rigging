@@ -360,6 +360,7 @@ def build_evidence_grade_table(assessments: list[PairwiseAssessment]) -> list[di
                     "evidence_grade": _evidence_grade(finding),
                     "reason": _evidence_reason(finding),
                     "evidence": finding.evidence,
+                    "evidence_details": finding.evidence_details,
                 }
             )
     return rows
@@ -651,8 +652,19 @@ def build_formal_report_markdown(report: dict) -> str:
             lines.append(f"{index}. 供应商组合：{item['pair']}")
             lines.append(f"   线索名称：{item['finding_title']}")
             lines.append(f"   证据判断：{item['grade_text']}（{item['evidence_grade']}级）")
-            for snippet in item["snippets"]:
-                lines.append(f"   原文片段：{snippet}")
+            locations = item.get("locations", [])
+            if locations:
+                for location in locations:
+                    lines.append(f"   原文片段：{location['snippet']}")
+                    lines.append(
+                        f"   {location['left'].get('supplier') or '左侧'}来源：{_format_overlap_location_markdown(location['left'])}"
+                    )
+                    lines.append(
+                        f"   {location['right'].get('supplier') or '右侧'}来源：{_format_overlap_location_markdown(location['right'])}"
+                    )
+            else:
+                for snippet in item["snippets"]:
+                    lines.append(f"   原文片段：{snippet}")
             lines.append("")
     lines.extend(
         [
@@ -869,6 +881,7 @@ def _build_text_overlap_appendix(
                 "evidence_grade": item["evidence_grade"],
                 "grade_text": _evidence_reason_to_plain_text(item.get("reason", "")),
                 "snippets": _extract_overlap_snippets(item.get("evidence", [])),
+                "locations": _extract_overlap_locations(item.get("evidence_details", []), supplier_name_map),
             }
         )
     return rows
@@ -893,10 +906,51 @@ def _extract_overlap_snippets(evidence_items: list[str]) -> list[str]:
     return snippets[:5]
 
 
+def _extract_overlap_locations(evidence_details: list[dict], supplier_name_map: dict[str, str] | None = None) -> list[dict]:
+    rows: list[dict] = []
+    for detail in evidence_details[:5]:
+        rows.append(
+            {
+                "snippet": detail.get("snippet", ""),
+                "left": _format_overlap_side(detail.get("left", {}), supplier_name_map),
+                "right": _format_overlap_side(detail.get("right", {}), supplier_name_map),
+            }
+        )
+    return rows
+
+
+def _format_overlap_side(side: dict, supplier_name_map: dict[str, str] | None = None) -> dict:
+    supplier = side.get("supplier", "")
+    return {
+        "supplier": supplier_name_map.get(supplier, supplier) if supplier_name_map else supplier,
+        "source_document": side.get("source_document"),
+        "source_page": side.get("source_page"),
+        "source_line": side.get("source_line"),
+        "component_title": side.get("component_title"),
+    }
+
+
 def _evidence_reason_to_plain_text(reason: str) -> str:
     if not reason:
         return "需要结合其他证据综合判断"
     return reason.rstrip("。")
+
+
+def _format_overlap_location_markdown(location: dict) -> str:
+    parts = []
+    if location.get("source_document"):
+        parts.append(str(location["source_document"]))
+    if location.get("component_title"):
+        parts.append(str(location["component_title"]))
+    page = location.get("source_page")
+    line = location.get("source_line")
+    if page is not None and line is not None:
+        parts.append(f"第{page}页第{line}行")
+    elif page is not None:
+        parts.append(f"第{page}页")
+    elif line is not None:
+        parts.append(f"第{line}行")
+    return " / ".join(parts) if parts else "位置未定位"
 
 
 def _build_exclusion_points(

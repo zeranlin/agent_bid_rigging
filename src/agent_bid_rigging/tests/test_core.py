@@ -305,6 +305,25 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
             "evidence_grade": "B",
             "reason": "较强异常线索，需要结合其他证据判断。",
             "evidence": ["重合行: 培训特点是目的性、针对性、实效性和创新性："],
+            "evidence_details": [
+                {
+                    "snippet": "培训特点是目的性、针对性、实效性和创新性：",
+                    "left": {
+                        "supplier": "恒禾",
+                        "source_document": "恒禾.txt",
+                        "source_page": None,
+                        "source_line": 120,
+                        "component_title": "项目实施方案",
+                    },
+                    "right": {
+                        "supplier": "华康",
+                        "source_document": "华康.txt",
+                        "source_page": None,
+                        "source_line": 118,
+                        "component_title": "项目实施方案",
+                    },
+                }
+            ],
         },
         {
             "pair": "恒禾 与 唯美",
@@ -312,6 +331,25 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
             "evidence_grade": "B",
             "reason": "较强异常线索，需要结合其他证据判断。",
             "evidence": ["重合行: 整理设备试运转中的情况(包括故障排除)记录；"],
+            "evidence_details": [
+                {
+                    "snippet": "整理设备试运转中的情况(包括故障排除)记录；",
+                    "left": {
+                        "supplier": "恒禾",
+                        "source_document": "恒禾.txt",
+                        "source_page": None,
+                        "source_line": 80,
+                        "component_title": "项目实施方案",
+                    },
+                    "right": {
+                        "supplier": "唯美",
+                        "source_document": "唯美.txt",
+                        "source_page": None,
+                        "source_line": 66,
+                        "component_title": "项目实施方案",
+                    },
+                }
+            ],
         },
     ]
     report = build_formal_report(
@@ -363,6 +401,7 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "重合片段示例" in markdown
     assert "培训特点是目的性、针对性、实效性和创新性" in markdown
     assert "附：文本重合证据附表" in markdown
+    assert "恒禾.txt / 项目实施方案 / 第120行" in markdown
 
 
 def test_risk_score_table_matches_pairwise_assessment() -> None:

@@ -44,6 +44,7 @@ def load_document(name: str, role: str, path: str) -> LoadedDocument:
     metadata = {
         "size_bytes": file_path.stat().st_size,
         "suffix": suffix,
+        "line_references": _build_line_references(text, file_path.name),
     }
     return LoadedDocument(
         name=name,
@@ -77,21 +78,26 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
 
     sections: list[str] = []
     components: list[dict[str, str | int]] = []
+    line_references: list[dict[str, str | int | None]] = []
     for index, path in enumerate(files, start=1):
         suffix = path.suffix.lower()
         if suffix in {".txt", ".md"}:
             text = path.read_text(encoding="utf-8")
             parser = "plain-text"
+            page_texts = None
         elif suffix == ".json":
             raw = json.loads(path.read_text(encoding="utf-8"))
             text = json.dumps(raw, ensure_ascii=False, indent=2)
             parser = "json"
+            page_texts = None
         elif suffix == ".docx":
             text = _read_docx(path)
             parser = "docx-ooxml"
+            page_texts = None
         elif suffix == ".pdf":
             text = _read_pdf(path)
             parser = _pdf_parser_name()
+            page_texts = _read_pdf_pages(path)
         else:
             continue
 
@@ -103,6 +109,15 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
         relative_path = _safe_relpath(path, root, display_name, index)
         title = _derive_title(normalized, display_name)
         sections.append(f"### 文档{index}: {display_name}\n{normalized}")
+        line_references.extend(
+            _build_line_references(
+                normalized,
+                relative_path,
+                component_index=index,
+                component_title=title,
+                page_texts=page_texts,
+            )
+        )
         components.append(
             {
                 "index": index,
@@ -132,6 +147,7 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
             "source_type": source_type,
             "component_count": len(components),
             "components": components,
+            "line_references": line_references,
         },
     )
 
@@ -173,6 +189,11 @@ def _read_pdf(path: Path) -> str:
 def _read_pdf_with_pypdf(path: Path) -> str:
     reader = PdfReader(str(path))
     return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def _read_pdf_pages(path: Path) -> list[str]:
+    reader = PdfReader(str(path))
+    return [(page.extract_text() or "") for page in reader.pages]
 
 
 def _pdf_parser_name() -> str:
@@ -262,3 +283,52 @@ def _sha256_bytes(payload: bytes) -> str:
 
 def _safe_iso_mtime(path: Path) -> str:
     return str(path.stat().st_mtime)
+
+
+def _build_line_references(
+    text: str,
+    source_document: str,
+    component_index: int | None = None,
+    component_title: str | None = None,
+    page_texts: list[str] | None = None,
+) -> list[dict[str, str | int | None]]:
+    refs: list[dict[str, str | int | None]] = []
+    if page_texts:
+        for page_index, page_text in enumerate(page_texts, start=1):
+            for source_line, raw_line in enumerate(page_text.splitlines(), start=1):
+                normalized = _normalize_text_line(raw_line)
+                if not normalized:
+                    continue
+                refs.append(
+                    {
+                        "normalized_line": normalized,
+                        "source_document": source_document,
+                        "source_page": page_index,
+                        "source_line": source_line,
+                        "component_index": component_index,
+                        "component_title": component_title,
+                    }
+                )
+        return refs
+
+    for source_line, raw_line in enumerate(text.splitlines(), start=1):
+        normalized = _normalize_text_line(raw_line)
+        if not normalized:
+            continue
+        refs.append(
+            {
+                "normalized_line": normalized,
+                "source_document": source_document,
+                "source_page": None,
+                "source_line": source_line,
+                "component_index": component_index,
+                "component_title": component_title,
+            }
+        )
+    return refs
+
+
+def _normalize_text_line(line: str) -> str:
+    line = re.sub(r"\s+", " ", line.strip())
+    line = line.replace("（", "(").replace("）", ")")
+    return line

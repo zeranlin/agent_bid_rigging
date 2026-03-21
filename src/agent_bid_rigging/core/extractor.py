@@ -49,6 +49,7 @@ def extract_signals(
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     normalized_lines = [_normalize_line(line) for line in lines]
     tender_lines = tender_lines or set()
+    line_ref_map = _build_line_ref_map(document.metadata.get("line_references", []))
 
     non_tender_lines = [
         line
@@ -58,6 +59,11 @@ def extract_signals(
     candidate_overlap_lines = [
         line for line in non_tender_lines if _is_candidate_overlap_line(line)
     ]
+    candidate_overlap_refs = {
+        line: line_ref_map.get(line, [])[:5]
+        for line in candidate_overlap_lines
+        if line_ref_map.get(line)
+    }
     rare_lines = {
         hashlib.sha1(line.encode("utf-8")).hexdigest()[:12]: line
         for line, count in Counter(candidate_overlap_lines).items()
@@ -80,6 +86,7 @@ def extract_signals(
         non_tender_lines=non_tender_lines,
         rare_line_fingerprints=rare_lines,
         candidate_overlap_lines=candidate_overlap_lines,
+        candidate_overlap_refs=candidate_overlap_refs,
     )
 
 
@@ -162,3 +169,21 @@ def _is_candidate_overlap_line(line: str) -> bool:
     if any(pattern in line for pattern in GENERIC_LINE_PATTERNS):
         return False
     return _is_informative_line(line)
+
+
+def _build_line_ref_map(line_references: list[dict]) -> dict[str, list[dict]]:
+    mapping: dict[str, list[dict]] = {}
+    for item in line_references:
+        normalized = _normalize_line(str(item.get("normalized_line", "")))
+        if not normalized:
+            continue
+        mapping.setdefault(normalized, []).append(
+            {
+                "source_document": item.get("source_document"),
+                "source_page": item.get("source_page"),
+                "source_line": item.get("source_line"),
+                "component_index": item.get("component_index"),
+                "component_title": item.get("component_title"),
+            }
+        )
+    return mapping

@@ -433,10 +433,34 @@ def _build_text_overlap_appendix_markdown(rows: list[dict]) -> str:
         lines.append(f"## {index}. {row['pair']}")
         lines.append(f"- 线索名称：{row['finding_title']}")
         lines.append(f"- 证据判断：{row['grade_text']}（{row['evidence_grade']}级）")
-        for snippet in row.get("snippets", []):
-            lines.append(f"- 原文片段：`{snippet}`")
+        locations = row.get("locations", [])
+        if locations:
+            for item in locations:
+                lines.append(f"- 原文片段：`{item['snippet']}`")
+                lines.append(f"  {item['left'].get('supplier') or '左侧'}来源：{_format_overlap_location(item['left'])}")
+                lines.append(f"  {item['right'].get('supplier') or '右侧'}来源：{_format_overlap_location(item['right'])}")
+        else:
+            for snippet in row.get("snippets", []):
+                lines.append(f"- 原文片段：`{snippet}`")
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def _format_overlap_location(location: dict) -> str:
+    parts = []
+    if location.get("source_document"):
+        parts.append(str(location["source_document"]))
+    if location.get("component_title"):
+        parts.append(str(location["component_title"]))
+    page = location.get("source_page")
+    line = location.get("source_line")
+    if page is not None and line is not None:
+        parts.append(f"第{page}页第{line}行")
+    elif page is not None:
+        parts.append(f"第{page}页")
+    elif line is not None:
+        parts.append(f"第{line}行")
+    return " / ".join(parts) if parts else "位置未定位"
 
 
 def _overall_conclusion(assessments: list[dict]) -> str:

@@ -265,6 +265,7 @@ def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) 
         non_tender_lines=list(signal.non_tender_lines),
         rare_line_fingerprints=dict(signal.rare_line_fingerprints),
         candidate_overlap_lines=list(signal.candidate_overlap_lines),
+        candidate_overlap_refs={key: [dict(row) for row in value] for key, value in signal.candidate_overlap_refs.items()},
         company_names=company_name_candidates,
         phones=_build_text_observations(signal.phones, signal.document.path),
         emails=_build_text_observations(signal.emails, signal.document.path),
