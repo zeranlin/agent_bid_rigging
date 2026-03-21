@@ -5,3 +5,5 @@
 - [review-loop.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/review-loop.md)
 - [review-result-templates.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/review-result-templates.md)
 - [sop-phase-plan.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/sop-phase-plan.md)
+- [ocr-interface-contract.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/ocr-interface-contract.md)
+- [pdf-long-document-review.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/pdf-long-document-review.md)

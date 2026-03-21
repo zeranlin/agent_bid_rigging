@@ -281,8 +281,9 @@ RUN_TEMPLATE = """<!doctype html>
       text-decoration: none;
       padding: 16px 18px;
       border-radius: 18px;
-      background: linear-gradient(180deg, #975200 0%, #7c3f00 100%);
-      color: white;
+      background: #fffaf4;
+      border: 1px solid var(--line);
+      color: var(--accent);
       font-weight: 600;
       min-height: 92px;
       align-content: center;
@@ -295,9 +296,9 @@ RUN_TEMPLATE = """<!doctype html>
     }
     a.button.active span { color: rgba(255,255,255,0.82); }
     a.button strong { font-size: 20px; }
-    a.button span { font-size: 13px; color: rgba(255,255,255,0.82); }
+    a.button span { font-size: 13px; color: color-mix(in srgb, var(--accent) 82%, white); }
     a.secondary {
-      background: transparent;
+      background: #fffaf4;
       border: 1px solid var(--line);
       color: var(--accent);
     }
