@@ -429,6 +429,39 @@ def test_risk_score_table_matches_pairwise_assessment() -> None:
     assert risk_table[0]["risk_level"] == assessment.risk_level
 
 
+def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> None:
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "\n".join(
+                [
+                    "培训特点是目的性、针对性、实效性和创新性：",
+                    "结合建设项目及实际状况，提供适合客户的、有针对性的培训方案。",
+                    "实效性：项目自始至终，我们都通过与客户组成共同的工作小组。",
+                    "备专业技术人员，为该项目提供技术培训。",
+                ]
+            ),
+        )
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "\n".join(
+                [
+                    "培训特点是目的性、针对性、实效性和创新性：",
+                    "结合建设项目及实际状况，提供适合客户的、有针对性的培训方案。",
+                    "实效性：项目自始至终，我们都通过与客户组成共同的工作小组。",
+                    "备专业技术人员，为该项目提供技术培训。",
+                ]
+            ),
+        )
+    )
+    assessment = assess_pairs([left, right])[0]
+    assert not any(finding.title == "仅两家共享的非模板文本重合" for finding in assessment.findings)
+
+
 def load_document_from_text(name: str, role: str, text: str):
     temp_dir = Path(tempfile.mkdtemp(prefix="agent_bid_rigging_test_"))
     path = temp_dir / f"{name}_{role}.txt"

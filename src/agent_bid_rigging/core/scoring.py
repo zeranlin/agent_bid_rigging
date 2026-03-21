@@ -5,6 +5,27 @@ from itertools import combinations
 
 from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding, ReviewFacts, SupplierFacts
 
+TEMPLATE_OVERLAP_PATTERNS = (
+    "培训特点",
+    "有针对性的培训方案",
+    "共同的工作小组",
+    "应保证设备安装、维修、操作安全的要求",
+    "应方便工件的存放、运输和现场的清理",
+    "定期作好并整理设备安全方便检查",
+    "整理设备试运转中的情况",
+    "受到过良好教育",
+    "专业技术人员，为该项目提供技术培训",
+)
+TEMPLATE_COMPONENT_PATTERNS = (
+    "项目实施方案",
+    "质量保证及售后服务承诺",
+    "售后服务",
+    "培训",
+    "主要商务要求",
+    "具有履行合同所必需的设备和专业技术",
+    "供应商应提交的相关资格证明材料",
+)
+
 
 def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[PairwiseAssessment]:
     suppliers = _coerce_suppliers(signals)
@@ -112,6 +133,7 @@ def _pair_only_line_findings(
         for line in (set(_candidate_overlap_lines(left)) & set(_candidate_overlap_lines(right)))
         if global_line_counts[line] == 2
     )
+    overlap = [line for line in overlap if not _is_template_like_overlap(line, left, right)]
     if not overlap:
         return []
 
@@ -136,6 +158,26 @@ def _pair_only_line_findings(
             ],
         )
     ]
+
+
+def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
+    if any(pattern in line for pattern in TEMPLATE_OVERLAP_PATTERNS):
+        return True
+    return _refs_look_template_like(_candidate_overlap_refs(left).get(line, [])) and _refs_look_template_like(
+        _candidate_overlap_refs(right).get(line, [])
+    )
+
+
+def _refs_look_template_like(refs: list[dict]) -> bool:
+    if not refs:
+        return False
+    for ref in refs:
+        title = str(ref.get("component_title") or "")
+        source_document = str(ref.get("source_document") or "")
+        corpus = f"{title} {source_document}"
+        if any(pattern in corpus for pattern in TEMPLATE_COMPONENT_PATTERNS):
+            return True
+    return False
 
 
 def _risk_level(score: int) -> str:
