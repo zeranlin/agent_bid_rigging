@@ -72,7 +72,7 @@ def _generate_template_opinion(report: dict) -> str:
         f"- 采购人：{basic_info.get('purchaser') or '未自动识别'}",
         f"- 采购代理机构：{basic_info.get('agency') or '未自动识别'}",
         f"- 审查对象：{'、'.join(supplier_names)}",
-        f"- 审查生成时间：{report['generated_at']}",
+        f"- 审查生成时间：{_format_datetime(report['generated_at'])}",
         "",
         "## 二、审查依据与方法",
         "",
@@ -270,6 +270,13 @@ def _format_evidence_summary(evidence_summary: list[dict]) -> str:
             f"- {item['pair']}：{item['finding_title']}，证据等级 {item['evidence_grade']}。"
         )
     return "\n".join(lines)
+
+
+def _format_datetime(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return value.replace("T", " ")
 
 
 def _risk_level_text(level: str) -> str:
