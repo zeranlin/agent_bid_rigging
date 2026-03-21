@@ -412,6 +412,11 @@ def _build_supplier_facts(
             facts.pricing_rows.append(
                 {
                     "value": normalize_text_field(row.get("value")),
+                    "item_name": normalize_text_field(row.get("item_name")),
+                    "amount": normalize_text_field(row.get("amount")),
+                    "tax_rate": normalize_text_field(row.get("tax_rate")),
+                    "pricing_note": normalize_text_field(row.get("pricing_note")),
+                    "is_total_row": bool(row.get("is_total_row")),
                     "source_document": row.get("source_path") or signal.document.path,
                     "source_page": row.get("source_page"),
                     "source_section": row.get("source_section"),

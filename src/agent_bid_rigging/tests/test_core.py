@@ -246,6 +246,33 @@ def test_pairwise_scoring_uses_pricing_rows_from_review_facts() -> None:
     assert assessment.dimension_summary["pricing_link"]["tier"] == "strong"
 
 
+def test_pairwise_scoring_distinguishes_total_bid_and_pricing_structure_findings() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：100200"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    review_facts.suppliers[0].pricing_rows.extend(
+        [
+            {"value": "成品软件=80000.00", "item_name": "成品软件", "amount": "80000.00", "tax_rate": "13%", "pricing_note": "含税"},
+            {"value": "实施服务=20000.00", "item_name": "实施服务", "amount": "20000.00", "tax_rate": "13%", "pricing_note": "含税"},
+        ]
+    )
+    review_facts.suppliers[1].pricing_rows.extend(
+        [
+            {"value": "成品软件=80000.00", "item_name": "成品软件", "amount": "80000.00", "tax_rate": "13%", "pricing_note": "含税"},
+            {"value": "实施服务=20000.00", "item_name": "实施服务", "amount": "20000.00", "tax_rate": "13%", "pricing_note": "含税"},
+        ]
+    )
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "投标报价较为接近" in titles
+    assert "分项报价结构相似" in titles or "分项报价结构高度一致" in titles
+    assert "分项报价税率一致" in titles
+    assert "特殊计价说明重合" in titles
+
+
 def test_pairwise_scoring_uses_contact_names_and_normalized_addresses() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
     left = extract_signals(load_document_from_text("alpha", "bid", "联系人：王小明\n地址：呼和浩特市 新城区示例路1号\n投标报价：100000"))

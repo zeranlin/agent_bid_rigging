@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from itertools import combinations
+import re
 
 from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding, ReviewFacts, SupplierFacts
 
@@ -251,28 +252,50 @@ def _pair_only_line_findings(
 
 
 def _pricing_row_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
-    left_rows = _pricing_rows(left)
-    right_rows = _pricing_rows(right)
-    overlap = sorted(set(left_rows) & set(right_rows))
-    if not overlap:
-        return []
+    findings: list[PairwiseFinding] = []
+    left_rows = _normalized_pricing_rows(left)
+    right_rows = _normalized_pricing_rows(right)
 
-    if len(overlap) >= 3:
-        title = "分项报价结构高度一致"
-        weight = 20
-    elif len(overlap) >= 2:
-        title = "分项报价结构相似"
-        weight = 12
-    else:
-        title = "分项报价单项重合"
-        weight = 6
-    return [
-        PairwiseFinding(
-            title=title,
-            weight=weight,
-            evidence=[f"共享报价行: {value}" for value in overlap[:5]],
+    structure_overlap = sorted(set(left_rows) & set(right_rows))
+    if structure_overlap:
+        if len(structure_overlap) >= 3:
+            title = "分项报价结构高度一致"
+            weight = 20
+        elif len(structure_overlap) >= 2:
+            title = "分项报价结构相似"
+            weight = 12
+        else:
+            title = "分项报价单项重合"
+            weight = 6
+        findings.append(
+            PairwiseFinding(
+                title=title,
+                weight=weight,
+                evidence=[f"共享报价行: {value}" for value in structure_overlap[:5]],
+            )
         )
-    ]
+
+    tax_overlap = sorted(set(_pricing_tax_rates(left)) & set(_pricing_tax_rates(right)))
+    if tax_overlap:
+        findings.append(
+            PairwiseFinding(
+                title="分项报价税率一致",
+                weight=6 if len(tax_overlap) == 1 else 10,
+                evidence=[f"共享税率: {value}" for value in tax_overlap[:5]],
+            )
+        )
+
+    note_overlap = sorted(set(_pricing_notes(left)) & set(_pricing_notes(right)))
+    if note_overlap:
+        findings.append(
+            PairwiseFinding(
+                title="特殊计价说明重合",
+                weight=8 if len(note_overlap) == 1 else 12,
+                evidence=[f"共享计价说明: {value}" for value in note_overlap[:5]],
+            )
+        )
+
+    return findings
 
 
 def _authorization_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
@@ -402,6 +425,8 @@ def _dimension_for_finding(title: str) -> str:
         "分项报价结构高度一致",
         "分项报价结构相似",
         "分项报价单项重合",
+        "分项报价税率一致",
+        "特殊计价说明重合",
     }:
         return "pricing_link"
     if "文本重合" in title:
@@ -422,9 +447,9 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "strong"
     if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合"}:
         return "medium"
-    if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合"}:
+    if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合"}:
         return "medium"
-    if title in {"联系人姓名重合"}:
+    if title in {"联系人姓名重合", "分项报价税率一致"}:
         return "weak"
     if "文本重合" in title:
         return "medium" if weight >= 20 else "weak"
@@ -570,6 +595,15 @@ def _normalize_address(value: str) -> str:
     return normalized.rstrip("，,。；;：:")
 
 
+def normalize_text_field(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    text = text.replace("\u3000", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
 def _bid_amounts(item: ExtractedSignals | SupplierFacts) -> list[float]:
     if isinstance(item, SupplierFacts):
         values: list[float] = []
@@ -582,10 +616,55 @@ def _bid_amounts(item: ExtractedSignals | SupplierFacts) -> list[float]:
     return item.bid_amounts
 
 
-def _pricing_rows(item: ExtractedSignals | SupplierFacts) -> list[str]:
+def _pricing_rows(item: ExtractedSignals | SupplierFacts) -> list[dict[str, str]]:
     if isinstance(item, SupplierFacts):
-        return [str(row.get("value")) for row in item.pricing_rows if row.get("value")]
+        rows: list[dict[str, str]] = []
+        for row in item.pricing_rows:
+            if not row.get("value"):
+                continue
+            rows.append(
+                {
+                    "value": str(row.get("value") or ""),
+                    "item_name": str(row.get("item_name") or ""),
+                    "amount": str(row.get("amount") or ""),
+                    "tax_rate": str(row.get("tax_rate") or ""),
+                    "pricing_note": str(row.get("pricing_note") or ""),
+                }
+            )
+        return rows
     return []
+
+
+def _normalized_pricing_rows(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    rows = []
+    for row in _pricing_rows(item):
+        item_name = normalize_text_field(row.get("item_name"))
+        amount = normalize_text_field(row.get("amount"))
+        if item_name and amount:
+            rows.append(f"{item_name}={amount}")
+            continue
+        value = normalize_text_field(row.get("value"))
+        if value:
+            rows.append(value)
+    return rows
+
+
+def _pricing_tax_rates(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    rates = []
+    for row in _pricing_rows(item):
+        tax_rate = normalize_text_field(row.get("tax_rate"))
+        if tax_rate:
+            rates.append(tax_rate)
+    return rates
+
+
+def _pricing_notes(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    notes = []
+    for row in _pricing_rows(item):
+        note = normalize_text_field(row.get("pricing_note"))
+        if note:
+            notes.append(note)
+    return notes
 
 
 def _authorized_manufacturers(item: ExtractedSignals | SupplierFacts) -> list[str]:

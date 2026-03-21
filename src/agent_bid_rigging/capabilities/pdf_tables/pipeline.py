@@ -82,6 +82,8 @@ def _extract_bid_total_amount(section: PdfSection) -> PdfTableRow | None:
         source_page=section.start_page,
         confidence=0.9,
         snippet=section.snippet[:180],
+        amount=chosen,
+        is_total_row=True,
     )
 
 
@@ -96,6 +98,8 @@ def _extract_pricing_rows(section: PdfSection) -> list[PdfTableRow]:
         amount = _extract_first_amount(line)
         if not label or not amount or _looks_like_total_label(label):
             continue
+        tax_rate = _extract_tax_rate(line)
+        pricing_note = _extract_pricing_note(line)
         key = (label, amount)
         if key in seen:
             continue
@@ -109,6 +113,10 @@ def _extract_pricing_rows(section: PdfSection) -> list[PdfTableRow]:
                 source_page=section.start_page,
                 confidence=0.82,
                 snippet=line[:180],
+                item_name=label,
+                amount=amount,
+                tax_rate=tax_rate,
+                pricing_note=pricing_note,
             )
         )
 
@@ -121,6 +129,8 @@ def _extract_pricing_rows(section: PdfSection) -> list[PdfTableRow]:
         amount = _normalize_amount(match.group(2))
         if not amount or _looks_like_total_label(label):
             continue
+        tax_rate = _extract_tax_rate(compact)
+        pricing_note = _extract_pricing_note(compact)
         key = (label, amount)
         if key in seen:
             continue
@@ -134,6 +144,10 @@ def _extract_pricing_rows(section: PdfSection) -> list[PdfTableRow]:
                 source_page=section.start_page,
                 confidence=0.78,
                 snippet=section.snippet[:180],
+                item_name=label,
+                amount=amount,
+                tax_rate=tax_rate,
+                pricing_note=pricing_note,
             )
         )
 
@@ -155,6 +169,24 @@ def _extract_first_amount(text: str) -> str | None:
     if not match:
         return None
     return _normalize_amount(match.group(1))
+
+
+def _extract_tax_rate(text: str) -> str | None:
+    match = re.search(r"(?:税率|增值税税率)\s*[:：]?\s*(\d{1,2}(?:\.\d+)?%)", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_pricing_note(text: str) -> str | None:
+    lowered = re.sub(r"\s+", "", text)
+    note_tokens = []
+    for token in ("含税", "不含税", "免费", "运营分润", "分润", "赠送", "优惠", "折扣"):
+        if token in lowered:
+            note_tokens.append(token)
+    if not note_tokens:
+        return None
+    return "、".join(dict.fromkeys(note_tokens))
 
 
 def _extract_pricing_label_from_line(line: str) -> str | None:

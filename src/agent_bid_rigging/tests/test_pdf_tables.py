@@ -4,6 +4,7 @@ from pathlib import Path
 
 from agent_bid_rigging.capabilities import CapabilityContext
 from agent_bid_rigging.capabilities.pdf_sectioning.pipeline import build_pdf_sectioning_response
+from agent_bid_rigging.capabilities.pdf_sectioning.schemas import PdfSection
 from agent_bid_rigging.capabilities.pdf_tables.pipeline import PdfTablesCapability, build_pdf_table_response
 from agent_bid_rigging.core.artifacts import _primary_value
 from agent_bid_rigging.core.artifacts import build_section_similarity_table
@@ -56,6 +57,28 @@ def test_pdf_tables_prefer_total_amount_over_item_amounts_for_bidder_b(tmp_path:
     assert amount_row.value == "2000000.00"
     pricing_rows = [row for row in table_response.rows if row.field_name == "pricing_row"]
     assert any(row.value.startswith("成品软件=") for row in pricing_rows)
+
+
+def test_pdf_tables_capture_tax_rate_and_pricing_notes_from_quotation_section(tmp_path: Path) -> None:
+    source_pdf = tmp_path / "quote.pdf"
+    source_pdf.write_text("stub", encoding="utf-8")
+    section = PdfSection(
+        title="报价表",
+        family="quotation",
+        start_page=5,
+        end_page=5,
+        page_span=1,
+        source="body",
+        snippet="系统实施报价 100000 含税",
+        text="系统实施报价 100000 税率：13% 含税\n平台服务费 5000 免费赠送",
+        confidence=0.95,
+    )
+
+    table_response = build_pdf_table_response(source_pdf, output_dir=tmp_path / "tables", sections=[section])
+
+    pricing_rows = [row for row in table_response.rows if row.field_name == "pricing_row"]
+    assert any(row.item_name == "系统实施报价" and row.amount == "100000.00" and row.tax_rate == "13%" and row.pricing_note == "含税" for row in pricing_rows)
+    assert any(row.item_name == "平台服务费" and row.amount == "5000.00" and row.pricing_note == "免费、赠送" for row in pricing_rows)
 
 
 def test_section_similarity_table_uses_long_pdf_sections(tmp_path: Path) -> None:
@@ -130,12 +153,12 @@ def test_review_facts_extract_long_pdf_profile_fields(tmp_path: Path) -> None:
     assert _primary_value(supplier_map["A"], "phones") == "*******8093"
     assert "长乐区" in (_primary_value(supplier_map["A"], "addresses") or "")
     assert _primary_value(supplier_map["A"], "bid_amounts") == "1.00"
-    assert any(row["value"].startswith("系统实施报价=") for row in supplier_map["A"].pricing_rows)
+    assert any(row["value"].startswith("系统实施报价=") and row["item_name"] == "系统实施报价" and row["amount"] == "1.00" for row in supplier_map["A"].pricing_rows)
 
     assert _primary_value(supplier_map["B"], "company_names") == "投标人 B"
     assert _primary_value(supplier_map["B"], "legal_representatives") == "王淑云"
     assert _primary_value(supplier_map["B"], "bid_amounts") == "2000000.00"
-    assert any(row["value"].startswith("成品软件=") for row in supplier_map["B"].pricing_rows)
+    assert any(row["value"].startswith("成品软件=") and row["item_name"] == "成品软件" and row["amount"] for row in supplier_map["B"].pricing_rows)
 
     assert _primary_value(supplier_map["C"], "company_names") == "投标人 C"
     assert _primary_value(supplier_map["C"], "phones") == "*******6767"

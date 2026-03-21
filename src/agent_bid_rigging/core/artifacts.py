@@ -308,12 +308,19 @@ def build_price_analysis_table(signals: ReviewFacts | list[ExtractedSignals]) ->
                 ]
                 if candidates:
                     nearest_supplier, nearest_gap = min(candidates, key=lambda item: item[1])
+            pricing_rows = list(getattr(supplier, "pricing_rows", []) or [])
+            pricing_row_count = len(pricing_rows)
+            tax_rates = sorted({str(row.get("tax_rate")).strip() for row in pricing_rows if str(row.get("tax_rate") or "").strip()})
+            pricing_notes = sorted({str(row.get("pricing_note")).strip() for row in pricing_rows if str(row.get("pricing_note") or "").strip()})
             rows.append(
                 {
                     "supplier": supplier.supplier,
                     "bid_amount": f"{current:.2f}" if current is not None else None,
                     "nearest_supplier": nearest_supplier,
                     "nearest_gap": f"{nearest_gap:.2f}" if nearest_gap is not None else None,
+                    "pricing_row_count": pricing_row_count,
+                    "tax_rates": tax_rates,
+                    "pricing_notes": pricing_notes,
                 }
             )
         return rows
@@ -1592,7 +1599,7 @@ def _extract_named_values(text: str, field_names: tuple[str, ...]) -> list[str]:
 def _evidence_grade(finding) -> str:
     if finding.title in {"银行账号重合", "联系人电话重合", "邮箱重合", "法定代表人信息重合"}:
         return "A"
-    if "报价" in finding.title or "共享" in finding.title:
+    if "报价" in finding.title or "共享" in finding.title or finding.title in {"特殊计价说明重合"}:
         return "B"
     if "文本重合" in finding.title:
         return "C"
@@ -1621,6 +1628,10 @@ def _pricing_score(assessment: PairwiseAssessment) -> int:
             return 18
         if finding.title == "分项报价结构相似":
             return 12
+        if finding.title == "特殊计价说明重合":
+            return 10
+        if finding.title == "分项报价税率一致":
+            return 8
         if finding.title == "分项报价单项重合":
             return 6
     return 0

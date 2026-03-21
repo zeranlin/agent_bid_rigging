@@ -12,6 +12,11 @@ class PdfTableRow:
     source_page: int
     confidence: float
     snippet: str
+    item_name: str | None = None
+    amount: str | None = None
+    tax_rate: str | None = None
+    pricing_note: str | None = None
+    is_total_row: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
