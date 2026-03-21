@@ -79,6 +79,33 @@ INDEX_TEMPLATE = """<!doctype html>
     }
     textarea { min-height: 88px; resize: vertical; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .mode-card {
+      position: relative;
+      display: grid;
+      gap: 8px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fffaf4;
+    }
+    .mode-card input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .mode-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 10px 24px rgba(124, 63, 0, 0.12);
+      background: linear-gradient(180deg, #fff7ee 0%, #f7ebdb 100%);
+    }
+    .mode-card strong { font-size: 18px; }
+    .mode-card span { color: var(--muted); font-size: 14px; }
     button, .button {
       appearance: none;
       border: 0;
@@ -124,7 +151,7 @@ INDEX_TEMPLATE = """<!doctype html>
     .hint { padding: 12px 14px; border-radius: 12px; background: #f8f2ea; border: 1px dashed var(--line); }
     @media (max-width: 900px) {
       main { width: min(100vw - 24px, 1120px); }
-      .grid, .row { grid-template-columns: 1fr; }
+      .grid, .row, .mode-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -143,19 +170,24 @@ INDEX_TEMPLATE = """<!doctype html>
             <label for="label">案件标识</label>
             <input id="label" type="text" name="label" placeholder="例如：wcb_demo_release">
           </div>
-          <div class="row">
-            <div class="field">
-              <label for="opinion_mode">报告模式</label>
-              <select id="opinion_mode" name="opinion_mode">
-                <option value="template">template</option>
-                <option value="llm">llm</option>
-                <option value="auto" selected>auto</option>
-              </select>
+          <div class="field">
+            <label>审查模式</label>
+            <div class="mode-grid">
+              <label class="mode-card selected" id="mode-rule-card">
+                <input type="radio" name="review_mode" value="rule" checked>
+                <strong>规则审查</strong>
+                <span>不调用大模型，快速返回规则版正式报告。</span>
+              </label>
+              <label class="mode-card" id="mode-llm-card">
+                <input type="radio" name="review_mode" value="llm_ocr">
+                <strong>大模型审查</strong>
+                <span>调用 LLM + OCR，时间较长，返回增强版正式报告。</span>
+              </label>
             </div>
-            <div class="field">
-              <label for="bid_names">供应商名称（可选）</label>
-              <textarea id="bid_names" name="bid_names" placeholder="每行 1 个名称，顺序与投标文件一致"></textarea>
-            </div>
+          </div>
+          <div class="field">
+            <label for="bid_names">供应商名称（可选）</label>
+            <textarea id="bid_names" name="bid_names" placeholder="每行 1 个名称，顺序与投标文件一致"></textarea>
           </div>
           <div class="field">
             <label for="tender_file">招标文件</label>
@@ -168,7 +200,7 @@ INDEX_TEMPLATE = """<!doctype html>
           <button type="submit">开始审查</button>
         </form>
         <div class="hint">
-          <strong>演示建议：</strong>选择 `template` 可以快速出规则版，选择 `llm` 时系统会等待 LLM 完成后再给出最终入口报告。
+          <strong>演示建议：</strong>规则审查适合快速演示；大模型审查会进入等待状态，系统会一直处理直到 LLM + OCR 完成后再展示结果。
         </div>
       </section>
       <section class="panel">
@@ -200,6 +232,19 @@ INDEX_TEMPLATE = """<!doctype html>
       </section>
     </section>
   </main>
+  <script>
+    const ruleCard = document.getElementById("mode-rule-card");
+    const llmCard = document.getElementById("mode-llm-card");
+    const syncModeCards = () => {
+      const selected = document.querySelector("input[name='review_mode']:checked")?.value;
+      ruleCard.classList.toggle("selected", selected === "rule");
+      llmCard.classList.toggle("selected", selected === "llm_ocr");
+    };
+    document.querySelectorAll("input[name='review_mode']").forEach((radio) => {
+      radio.addEventListener("change", syncModeCards);
+    });
+    syncModeCards();
+  </script>
 </body>
 </html>
 """
@@ -302,6 +347,25 @@ RUN_TEMPLATE = """<!doctype html>
       color: var(--muted);
       font-size: 14px;
     }
+    .waiting {
+      display: grid;
+      gap: 14px;
+      padding: 22px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fff6ec 0%, #f8ead9 100%);
+      border: 1px solid var(--line);
+    }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 3px solid rgba(124, 63, 0, 0.18);
+      border-top-color: var(--accent);
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
     ul { margin: 0; padding-left: 20px; }
     .state-completed { color: var(--ok); }
     .state-running, .state-queued { color: var(--warn); }
@@ -320,17 +384,17 @@ RUN_TEMPLATE = """<!doctype html>
     <section class="panel">
       <a class="secondary" href="{{ url_for('index') }}">返回首页</a>
       <h1>{{ run_id }}</h1>
-      <p class="muted">状态会自动刷新。对于本地大模型案件，页面会持续等待直到 LLM 报告完成。</p>
+      <p class="muted">状态会自动刷新。规则审查会较快完成；大模型审查会持续等待，直到 LLM + OCR 报告处理完成。</p>
       <div class="meta">
         <div><strong>当前状态</strong><br><span class="state-{{ status.state }}">{{ status.state }}</span></div>
-        <div><strong>请求模式</strong><br>{{ status.requested_mode or 'template' }}</div>
+        <div><strong>审查模式</strong><br>{{ mode_label }}</div>
         <div><strong>生成时间</strong><br>{{ status.generated_at or job.generated_at or '-' }}</div>
         <div><strong>输出目录</strong><br>{{ run_dir }}</div>
       </div>
     </section>
     <section class="panel">
-      <h2>报告入口</h2>
-      <p class="section-note">优先查看主报告；规则版和 LLM 版可以用于对照审查口径差异。</p>
+      <h2>结果报告</h2>
+      <p class="section-note">演示页默认只突出正式报告入口；规则审查展示 `formal_report.md`，大模型审查优先展示 `formal_report.llm.md`。</p>
       <div class="links">
         {% for item in report_links %}
         <a class="button {% if item.secondary %}secondary{% endif %}" href="{{ item.href }}">
@@ -340,29 +404,26 @@ RUN_TEMPLATE = """<!doctype html>
         {% endfor %}
       </div>
     </section>
+    {% if auto_refresh %}
     <section class="panel">
-      <h2>关键文件</h2>
-      <ul>
-        {% for item in artifact_links %}
-        <li><a href="{{ item.href }}">{{ item.label }}</a></li>
-        {% endfor %}
-      </ul>
+      <h2>等待审查完成</h2>
+      <div class="waiting">
+        <div class="spinner"></div>
+        <div>
+          <strong>系统正在处理案件材料。</strong><br>
+          {% if mode_label == '大模型审查（LLM + OCR）' %}
+          当前正在执行 OCR、事实融合与 LLM 报告生成，请耐心等待页面自动刷新。
+          {% else %}
+          当前正在执行规则抽取、比对与正式报告生成，请稍候。
+          {% endif %}
+        </div>
+      </div>
     </section>
-    <section class="panel">
-      <h2>运行状态 JSON</h2>
-      <pre>{{ status_json }}</pre>
-    </section>
+    {% endif %}
     {% if report_content %}
     <section class="panel">
       <h2>报告查看</h2>
-      <p class="section-note">这里直接展示正式报告正文，可在页面内切换查看主报告、规则版和 LLM 版。</p>
-      {% if report_variants|length > 1 %}
-      <div class="report-tabs">
-        {% for item in report_variants %}
-        <a class="report-tab {% if item.active %}active{% endif %}" href="{{ item.href }}">{{ item.label }}</a>
-        {% endfor %}
-      </div>
-      {% endif %}
+      <p class="section-note">这里直接展示当前案件的正式报告正文。</p>
       <div class="report-viewer">{{ report_content }}</div>
     </section>
     {% endif %}
@@ -414,14 +475,17 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             )
             bids[supplier_name] = str(bid_path)
 
-        opinion_mode = (request.form.get("opinion_mode") or "auto").lower()
+        review_mode = (request.form.get("review_mode") or "rule").lower()
+        opinion_mode, enable_ocr = _resolve_review_mode(review_mode)
         _write_json(
             run_dir / "web_job.json",
             {
                 "run_id": run_id,
                 "state": "queued",
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "review_mode": review_mode,
                 "opinion_mode": opinion_mode,
+                "enable_ocr": enable_ocr,
                 "tender_path": str(tender_path),
                 "bids": bids,
             },
@@ -435,6 +499,8 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
                 "bids": bids,
                 "run_dir": run_dir,
                 "opinion_mode": opinion_mode,
+                "enable_ocr": enable_ocr,
+                "review_mode": review_mode,
             },
             daemon=True,
         )
@@ -467,11 +533,10 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             run_dir=str(run_dir),
             job=job,
             status=status,
+            mode_label=_review_mode_label(job.get("review_mode")),
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
             report_links=_report_links(run_dir),
-            artifact_links=_artifact_links(run_id, run_dir),
             report_content=report_content,
-            report_variants=_report_variants(run_id, run_dir, report_label),
             auto_refresh=status.get("state") in {"queued", "running"},
         )
 
@@ -487,6 +552,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
                 "run_id": run_id,
                 "job": job,
                 "llm_status": status,
+                "review_mode": job.get("review_mode", "rule"),
                 "available_reports": [item["label"] for item in _report_links(run_dir)],
             }
         )
@@ -517,6 +583,8 @@ def _execute_run(
     bids: dict[str, str],
     run_dir: Path,
     opinion_mode: str,
+    enable_ocr: bool,
+    review_mode: str,
 ) -> None:
     _write_json(
         run_dir / "web_job.json",
@@ -524,7 +592,9 @@ def _execute_run(
             "run_id": run_id,
             "state": "running",
             "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "review_mode": review_mode,
             "opinion_mode": opinion_mode,
+            "enable_ocr": enable_ocr,
             "tender_path": tender_path,
             "bids": bids,
         },
@@ -536,6 +606,7 @@ def _execute_run(
             output_dir=str(run_dir),
             label=run_id,
             opinion_mode=opinion_mode,
+            enable_ocr=enable_ocr,
         )
         _write_json(
             run_dir / "web_job.json",
@@ -543,7 +614,9 @@ def _execute_run(
                 "run_id": run_id,
                 "state": "completed",
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "review_mode": review_mode,
                 "opinion_mode": opinion_mode,
+                "enable_ocr": enable_ocr,
                 "tender_path": tender_path,
                 "bids": bids,
             },
@@ -555,7 +628,9 @@ def _execute_run(
                 "run_id": run_id,
                 "state": "failed",
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "review_mode": review_mode,
                 "opinion_mode": opinion_mode,
+                "enable_ocr": enable_ocr,
                 "tender_path": tender_path,
                 "bids": bids,
                 "error": str(exc),
@@ -574,7 +649,7 @@ def _list_runs(runs_dir: Path) -> list[dict[str, str]]:
             {
                 "run_id": item.name,
                 "state": status.get("state") or job.get("state", "unknown"),
-                "mode": status.get("requested_mode") or job.get("opinion_mode", "template"),
+                "mode": _review_mode_label(job.get("review_mode")),
                 "generated_at": status.get("generated_at") or job.get("generated_at", "-"),
             }
         )
@@ -636,13 +711,9 @@ def _unique_upload_path(target_dir: Path, filename: str) -> Path:
 
 def _report_links(run_dir: Path) -> list[dict[str, Any]]:
     mapping = [
-        ("formal_report.md", "主报告", "当前默认入口，适合直接展示"),
-        ("formal_report.rule.md", "规则版报告", "规则链路生成，稳定可审计"),
-        ("formal_report.llm.md", "LLM 版报告", "大模型增强措辞与证据解释"),
-        ("opinion.md", "主意见书", "更适合看结论与建议"),
-        ("opinion.rule.md", "规则版意见书", "规则口径输出的意见书"),
-        ("opinion.llm.md", "LLM 版意见书", "LLM 增强版意见书"),
-        ("summary.md", "摘要", "快速查看两两风险结果"),
+        ("formal_report.md", "主报告", "当前正式报告主入口"),
+        ("formal_report.rule.md", "规则版报告", "规则链路生成的正式报告"),
+        ("formal_report.llm.md", "大模型版报告", "LLM + OCR 增强版正式报告"),
     ]
     links = []
     for name, label, caption in mapping:
@@ -653,29 +724,7 @@ def _report_links(run_dir: Path) -> list[dict[str, Any]]:
                     "label": label,
                     "caption": caption,
                     "href": url_for("artifact", run_id=run_dir.name, name=name),
-                    "secondary": name not in {"formal_report.md", "opinion.md"},
-                }
-            )
-    return links
-
-
-def _artifact_links(run_id: str, run_dir: Path) -> list[dict[str, str]]:
-    names = [
-        "price_analysis_table.json",
-        "risk_score_table.json",
-        "evidence_grade_table.json",
-        "pairwise_report.json",
-        "llm_status.json",
-        "llm_review_layers.json",
-    ]
-    links = []
-    for name in names:
-        path = run_dir / name
-        if path.exists():
-            links.append(
-                {
-                    "label": name,
-                    "href": url_for("artifact", run_id=run_id, name=name),
+                    "secondary": name != "formal_report.md",
                 }
             )
     return links
@@ -712,6 +761,18 @@ def _report_variants(run_id: str, run_dir: Path, active_label: str) -> list[dict
             }
         )
     return rows
+
+
+def _resolve_review_mode(review_mode: str) -> tuple[str, bool]:
+    if review_mode == "llm_ocr":
+        return "llm", True
+    return "template", False
+
+
+def _review_mode_label(review_mode: str | None) -> str:
+    if review_mode == "llm_ocr":
+        return "大模型审查（LLM + OCR）"
+    return "规则审查"
 
 
 def _read_json(path: Path, default: Any) -> Any:

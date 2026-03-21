@@ -21,8 +21,15 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
     app = create_app(tmp_path)
     client = app.test_client()
 
-    def fake_execute_run(run_id: str, tender_path: str, bids: dict[str, str], run_dir: Path, opinion_mode: str) -> None:
-        (run_dir / "summary.md").write_text("# summary", encoding="utf-8")
+    def fake_execute_run(
+        run_id: str,
+        tender_path: str,
+        bids: dict[str, str],
+        run_dir: Path,
+        opinion_mode: str,
+        enable_ocr: bool,
+        review_mode: str,
+    ) -> None:
         (run_dir / "formal_report.md").write_text("# report", encoding="utf-8")
         (run_dir / "opinion.md").write_text("# opinion", encoding="utf-8")
         (run_dir / "llm_status.json").write_text(
@@ -58,7 +65,7 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
         "/runs",
         data={
             "label": "demo_case",
-            "opinion_mode": "template",
+            "review_mode": "rule",
             "bid_names": "恒禾\n华康",
             "tender_file": (io.BytesIO(b"tender body"), "招标文件.zip"),
             "bid_files": [
@@ -78,6 +85,7 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
     payload = status_response.get_json()
     assert payload["llm_status"]["state"] == "completed"
     assert "主报告" in payload["available_reports"]
+    assert payload["review_mode"] == "rule"
 
 
 def test_supplier_name_derivation() -> None:
