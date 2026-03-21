@@ -72,6 +72,15 @@ def _build_evidence_input(report: dict) -> str:
             f"level={row['risk_level']}, text={row['technical_text_score']}, entity={row['entity_link_score']}, "
             f"pricing={row['pricing_score']}, file={row['file_homology_score']}"
         )
+    review_facts = report.get("review_facts") or {}
+    supplier_facts = review_facts.get("suppliers") or []
+    if supplier_facts:
+        lines.extend(["", "统一事实层摘要:"])
+        for supplier in supplier_facts[:10]:
+            lines.append(
+                "- "
+                + _format_supplier_fact_summary(supplier)
+            )
     lines.append("")
     lines.append("证据分级表:")
     for row in report["evidence_grade_table"][:20]:
@@ -88,6 +97,26 @@ def _build_evidence_input(report: dict) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _format_supplier_fact_summary(supplier: dict) -> str:
+    def primary(field_name: str) -> str:
+        observations = supplier.get(field_name) or []
+        for item in observations:
+            if item.get("is_primary"):
+                return item.get("value", "")
+        return observations[0].get("value", "") if observations else ""
+
+    return (
+        f"{supplier.get('supplier')}: "
+        f"公司={primary('company_names') or supplier.get('supplier')}, "
+        f"报价={primary('bid_amounts') or '未识别'}, "
+        f"法代={primary('legal_representatives') or '未识别'}, "
+        f"电话={primary('phones') or '未识别'}, "
+        f"地址={primary('addresses') or '未识别'}, "
+        f"许可证号={primary('license_numbers') or '未识别'}, "
+        f"注册证号={primary('registration_numbers') or '未识别'}"
+    )
 
 
 def _build_section_input(report: dict, formal_report_markdown: str, evidence_markdown: str) -> str:

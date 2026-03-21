@@ -31,9 +31,7 @@ from agent_bid_rigging.core.artifacts import (
 )
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.fusion import (
-    append_ocr_authorization_rows,
-    append_ocr_entity_rows,
-    append_ocr_license_rows,
+    build_review_facts,
     build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
@@ -116,23 +114,20 @@ def run_review(
         opinion_mode=opinion_mode,
     )
     source_file_index = build_source_file_index(tender_path, bids, generated_at)
-    extracted_file_index = build_extracted_file_index(bid_signals)
-    document_catalog = build_document_catalog(bid_signals)
-    entity_field_table = build_entity_field_table(bid_signals)
-    price_analysis_table = build_price_analysis_table(bid_signals)
     structure_similarity_table = build_structure_similarity_table(bid_signals)
     file_fingerprint_table = build_file_fingerprint_table(bid_signals)
     duplicate_detection_table = build_duplicate_detection_table(bid_signals)
     text_similarity_table = build_text_similarity_table(bid_signals)
     shared_error_table = build_shared_error_table(bid_signals)
-    authorization_chain_table = build_authorization_chain_table(bid_signals)
-    license_match_table = build_license_match_table(bid_signals)
-    timeline_table = build_timeline_table(bid_signals)
     renumber_ocr_rows(image_index_rows, image_ocr_rows)
-    if image_ocr_rows:
-        append_ocr_entity_rows(entity_field_table, image_ocr_rows)
-        append_ocr_authorization_rows(authorization_chain_table, image_ocr_rows)
-        append_ocr_license_rows(license_match_table, image_ocr_rows)
+    review_facts = build_review_facts(tender_doc, bid_signals, image_index_rows, image_ocr_rows)
+    extracted_file_index = build_extracted_file_index(review_facts)
+    document_catalog = build_document_catalog(review_facts)
+    entity_field_table = build_entity_field_table(review_facts)
+    price_analysis_table = build_price_analysis_table(review_facts)
+    authorization_chain_table = build_authorization_chain_table(review_facts)
+    license_match_table = build_license_match_table(review_facts)
+    timeline_table = build_timeline_table(review_facts)
     review_conclusion_table = build_review_conclusion_table(assessments)
     evidence_grade_table = build_evidence_grade_table(assessments)
     risk_score_table = build_risk_score_table(
@@ -155,6 +150,7 @@ def run_review(
         structure_similarity_table=structure_similarity_table,
         authorization_chain_table=authorization_chain_table,
         timeline_table=timeline_table,
+        review_facts=review_facts,
     )
     rule_formal_report_markdown = build_formal_report_markdown(formal_report)
 
@@ -181,6 +177,7 @@ def run_review(
         "timeline_table": timeline_table,
         "image_index": image_index_rows,
         "image_ocr_table": image_ocr_rows,
+        "review_facts": review_facts.to_dict(),
         "evidence_grade_table": evidence_grade_table,
         "risk_score_table": risk_score_table,
         "review_conclusion_table": review_conclusion_table,
@@ -194,6 +191,7 @@ def run_review(
     _write_json(base_dir / "document_catalog.json", {"rows": document_catalog})
     _write_json(base_dir / "entity_field_table.json", {"rows": entity_field_table})
     _write_json(base_dir / "price_analysis_table.json", {"rows": price_analysis_table})
+    _write_json(base_dir / "review_facts.json", review_facts.to_dict())
     _write_json(base_dir / "structure_similarity_table.json", {"rows": structure_similarity_table})
     _write_json(base_dir / "file_fingerprint_table.json", {"rows": file_fingerprint_table})
     _write_json(base_dir / "duplicate_detection_table.json", {"rows": duplicate_detection_table})
@@ -475,6 +473,10 @@ def _load_report_context(base_dir: Path) -> dict:
     review_conclusion_table = json.loads((base_dir / "review_conclusion_table.json").read_text(encoding="utf-8"))
     image_index = _read_rows_file(base_dir / "image_index.json")
     image_ocr_table = _read_rows_file(base_dir / "image_ocr_table.json")
+    review_facts = {}
+    review_facts_path = base_dir / "review_facts.json"
+    if review_facts_path.exists():
+        review_facts = json.loads(review_facts_path.read_text(encoding="utf-8"))
     normalized_documents = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted((base_dir / "normalized").glob("*.json"))
@@ -492,6 +494,7 @@ def _load_report_context(base_dir: Path) -> dict:
         "review_conclusion_table": review_conclusion_table,
         "image_index": image_index,
         "image_ocr_table": image_ocr_table,
+        "review_facts": review_facts,
         "formal_report": formal_report,
     }
 

@@ -6,6 +6,7 @@ from agent_bid_rigging.core.fusion import (
     append_ocr_authorization_rows,
     append_ocr_entity_rows,
     append_ocr_license_rows,
+    build_review_facts,
     build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
@@ -99,3 +100,32 @@ def test_build_review_ocr_request_is_targeted_for_review_tasks() -> None:
     assert "business_license" in bid_request.doc_types
     assert "开标一览表" in bid_request.file_hints
     assert bid_request.metadata["supplier"] == "alpha"
+
+
+def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000\n邮箱：alpha@example.com"))
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/a.pdf",
+            "page_index": 1,
+            "doc_type": "business_license",
+            "summary": "营业执照",
+            "extracted_text": "法定代表人：张三",
+            "fields": {
+                "company_name": "阿尔法公司",
+                "legal_representative": "张三",
+                "phone": "13800000000",
+                "license_number": "LIC-001",
+            },
+            "confidence": 0.95,
+        }
+    ]
+    review_facts = build_review_facts(tender, [signal], [], ocr_rows)
+
+    assert review_facts.suppliers[0].supplier == "alpha"
+    assert review_facts.suppliers[0].emails[0].value == "alpha@example.com"
+    assert review_facts.suppliers[0].phones[0].value == "13800000000"
+    assert review_facts.suppliers[0].license_numbers[0].value == "LIC-001"
+    assert review_facts.suppliers[0].company_names[0].is_primary is True

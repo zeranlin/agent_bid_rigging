@@ -6,7 +6,7 @@ from datetime import datetime
 from itertools import combinations
 from pathlib import Path
 
-from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment
+from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, ReviewFacts, SupplierFacts
 
 DOCUMENT_CATEGORY_RULES = [
     ("开标一览表", ("开标一览表", "投标总报价", "报价表")),
@@ -22,6 +22,37 @@ DOCUMENT_CATEGORY_RULES = [
 ]
 AUTHORIZATION_PATTERNS = ("授权书", "授权期限", "授权产品", "厂家授权", "授权对象")
 LICENSE_PATTERNS = ("营业执照", "经营许可证", "注册证", "检验报告", "许可证")
+
+
+def _coerce_suppliers(payload: ReviewFacts | list[ExtractedSignals]) -> list[SupplierFacts] | None:
+    if isinstance(payload, ReviewFacts):
+        return payload.suppliers
+    return None
+
+
+def _observation_values(supplier: SupplierFacts, field_name: str) -> list[str]:
+    observations = getattr(supplier, field_name)
+    return [item.value for item in observations]
+
+
+def _primary_value(supplier: SupplierFacts, field_name: str) -> str | None:
+    observations = getattr(supplier, field_name)
+    if not observations:
+        return None
+    for observation in observations:
+        if observation.is_primary:
+            return observation.value
+    return observations[0].value
+
+
+def _primary_source(supplier: SupplierFacts, field_name: str) -> tuple[str | None, int | None]:
+    observations = getattr(supplier, field_name)
+    if not observations:
+        return None, None
+    for observation in observations:
+        if observation.is_primary:
+            return observation.source_document, observation.source_page
+    return observations[0].source_document, observations[0].source_page
 
 
 def build_case_manifest(
@@ -56,8 +87,40 @@ def build_source_file_index(tender_path: str, bids: dict[str, str], generated_at
     return rows
 
 
-def build_extracted_file_index(signals: list[ExtractedSignals]) -> list[dict]:
+def build_extracted_file_index(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        for supplier in supplier_facts:
+            components = supplier.document.metadata.get("components", [])
+            if not components:
+                rows.append(
+                    {
+                        "supplier": supplier.supplier,
+                        "document_role": supplier.document.role,
+                        "component_index": 1,
+                        "display_name": Path(supplier.document.path).name,
+                        "relative_path": Path(supplier.document.path).name,
+                        "parser": supplier.document.parser,
+                        "chars": len(supplier.document.text),
+                        "title": supplier.document.text.splitlines()[0][:120] if supplier.document.text else "",
+                    }
+                )
+                continue
+            for component in components:
+                rows.append(
+                    {
+                        "supplier": supplier.supplier,
+                        "document_role": supplier.document.role,
+                        "component_index": component["index"],
+                        "display_name": component["display_name"],
+                        "relative_path": component["relative_path"],
+                        "parser": component["parser"],
+                        "chars": component["chars"],
+                        "title": component.get("title", ""),
+                    }
+                )
+        return rows
     for signal in signals:
         components = signal.document.metadata.get("components", [])
         if not components:
@@ -90,8 +153,32 @@ def build_extracted_file_index(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
-def build_document_catalog(signals: list[ExtractedSignals]) -> list[dict]:
+def build_document_catalog(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        for supplier in supplier_facts:
+            components = supplier.document.metadata.get("components", [])
+            if not components:
+                rows.append(
+                    {
+                        "supplier": supplier.supplier,
+                        "document_name": Path(supplier.document.path).name,
+                        "category": classify_document(Path(supplier.document.path).name, supplier.document.text),
+                        "confidence": "document-level",
+                    }
+                )
+                continue
+            for component in components:
+                rows.append(
+                    {
+                        "supplier": supplier.supplier,
+                        "document_name": component["display_name"],
+                        "category": classify_document(component["display_name"], component.get("title", "")),
+                        "confidence": "heuristic",
+                    }
+                )
+        return rows
     for signal in signals:
         components = signal.document.metadata.get("components", [])
         if not components:
@@ -116,8 +203,32 @@ def build_document_catalog(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
-def build_entity_field_table(signals: list[ExtractedSignals]) -> list[dict]:
+def build_entity_field_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        fact_fields = (
+            "company_names",
+            "phones",
+            "emails",
+            "bank_accounts",
+            "legal_representatives",
+            "addresses",
+            "bid_amounts",
+        )
+        for supplier in supplier_facts:
+            for field_name in fact_fields:
+                source_document, source_page = _primary_source(supplier, field_name)
+                rows.append(
+                    {
+                        "supplier": supplier.supplier,
+                        "field_name": field_name,
+                        "values": _observation_values(supplier, field_name),
+                        "source_document": source_document or supplier.document.path,
+                        "source_page": source_page,
+                    }
+                )
+        return rows
     for signal in signals:
         field_values = {
             "phones": signal.phones,
@@ -140,8 +251,45 @@ def build_entity_field_table(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
-def build_price_analysis_table(signals: list[ExtractedSignals]) -> list[dict]:
+def build_price_analysis_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        priced = []
+        for supplier in supplier_facts:
+            current_text = _primary_value(supplier, "bid_amounts")
+            if current_text is not None:
+                try:
+                    priced.append((supplier.supplier, float(current_text)))
+                except ValueError:
+                    continue
+        for supplier in supplier_facts:
+            current_text = _primary_value(supplier, "bid_amounts")
+            current = None
+            if current_text is not None:
+                try:
+                    current = float(current_text)
+                except ValueError:
+                    current = None
+            nearest_gap = None
+            nearest_supplier = None
+            if current is not None:
+                candidates = [
+                    (other_supplier, abs(price - current))
+                    for other_supplier, price in priced
+                    if other_supplier != supplier.supplier
+                ]
+                if candidates:
+                    nearest_supplier, nearest_gap = min(candidates, key=lambda item: item[1])
+            rows.append(
+                {
+                    "supplier": supplier.supplier,
+                    "bid_amount": f"{current:.2f}" if current is not None else None,
+                    "nearest_supplier": nearest_supplier,
+                    "nearest_gap": f"{nearest_gap:.2f}" if nearest_gap is not None else None,
+                }
+            )
+        return rows
     priced = [
         (signal.document.name, max(signal.bid_amounts))
         for signal in signals
@@ -290,15 +438,25 @@ def build_formal_report(
     structure_similarity_table: list[dict] | None = None,
     authorization_chain_table: list[dict] | None = None,
     timeline_table: list[dict] | None = None,
+    review_facts: ReviewFacts | None = None,
 ) -> dict:
     top_pair = max(risk_score_table, key=lambda item: item["total_score"], default=None)
     source_paths = case_manifest.get("source_paths", {})
     tender_metadata = _extract_tender_metadata((tender_document or {}).get("text", ""))
-    supplier_profiles = _build_supplier_profiles(
-        bid_documents or [],
-        price_analysis_table or [],
-        authorization_chain_table or [],
-        timeline_table or [],
+    supplier_profiles = (
+        _build_supplier_profiles_from_facts(
+            review_facts,
+            price_analysis_table or [],
+            authorization_chain_table or [],
+            timeline_table or [],
+        )
+        if review_facts is not None
+        else _build_supplier_profiles(
+            bid_documents or [],
+            price_analysis_table or [],
+            authorization_chain_table or [],
+            timeline_table or [],
+        )
     )
     structure_summary = _build_structure_summary(structure_similarity_table or [], risk_score_table)
     suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table)
@@ -524,6 +682,34 @@ def _build_supplier_profiles(
                 "address": _first_or_none(doc.get("addresses", [])),
                 "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
                 "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
+            }
+        )
+    return profiles
+
+
+def _build_supplier_profiles_from_facts(
+    review_facts: ReviewFacts,
+    price_analysis_table: list[dict],
+    authorization_chain_table: list[dict],
+    timeline_table: list[dict],
+) -> list[dict]:
+    price_map = {row["supplier"]: row for row in price_analysis_table}
+    auth_map = {row["supplier"]: row for row in authorization_chain_table}
+    timeline_map = {row["supplier"]: row for row in timeline_table}
+    profiles: list[dict] = []
+    for supplier in review_facts.suppliers:
+        profiles.append(
+            {
+                "supplier": supplier.supplier,
+                "full_name": _primary_value(supplier, "company_names") or supplier.supplier,
+                "bid_amount": price_map.get(supplier.supplier, {}).get("bid_amount") or _primary_value(supplier, "bid_amounts"),
+                "phone": _primary_value(supplier, "phones"),
+                "email": _primary_value(supplier, "emails"),
+                "bank_account": _primary_value(supplier, "bank_accounts"),
+                "legal_representative": _clean_person_name(_primary_value(supplier, "legal_representatives")),
+                "address": _primary_value(supplier, "addresses"),
+                "authorization_summary": auth_map.get(supplier.supplier, {}).get("summary", "未发现明确授权链线索"),
+                "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
             }
         )
     return profiles
@@ -861,8 +1047,26 @@ def build_shared_error_table(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
-def build_authorization_chain_table(signals: list[ExtractedSignals]) -> list[dict]:
+def build_authorization_chain_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        for supplier in supplier_facts:
+            manufacturer_mentions = _observation_values(supplier, "manufacturers")
+            authorization_mentions = _observation_values(supplier, "authorization_mentions")[:20]
+            rows.append(
+                {
+                    "supplier": supplier.supplier,
+                    "manufacturer_mentions": manufacturer_mentions,
+                    "authorization_mentions": authorization_mentions,
+                    "summary": (
+                        "发现授权/厂家关键词"
+                        if authorization_mentions or manufacturer_mentions
+                        else "未发现明确授权链线索"
+                    ),
+                }
+            )
+        return rows
     for signal in signals:
         text = signal.document.text
         rows.append(
@@ -876,8 +1080,23 @@ def build_authorization_chain_table(signals: list[ExtractedSignals]) -> list[dic
     return rows
 
 
-def build_license_match_table(signals: list[ExtractedSignals]) -> list[dict]:
+def build_license_match_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        for supplier in supplier_facts:
+            license_lines = _observation_values(supplier, "authorization_mentions")[:20]
+            registration_ids = sorted(
+                set(_observation_values(supplier, "license_numbers") + _observation_values(supplier, "registration_numbers"))
+            )[:20]
+            rows.append(
+                {
+                    "supplier": supplier.supplier,
+                    "license_lines": license_lines,
+                    "registration_ids": registration_ids,
+                }
+            )
+        return rows
     for signal in signals:
         text = signal.document.text
         lines = _find_lines(text, LICENSE_PATTERNS)
@@ -892,8 +1111,26 @@ def build_license_match_table(signals: list[ExtractedSignals]) -> list[dict]:
     return rows
 
 
-def build_timeline_table(signals: list[ExtractedSignals]) -> list[dict]:
+def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[dict]:
     rows: list[dict] = []
+    supplier_facts = _coerce_suppliers(signals)
+    if supplier_facts is not None:
+        for supplier in supplier_facts:
+            components = supplier.document.metadata.get("components", [])
+            modified_times = supplier.timeline_modified_times[:20]
+            rows.append(
+                {
+                    "supplier": supplier.supplier,
+                    "component_count": len(components) or 1,
+                    "modified_times": modified_times,
+                    "summary": (
+                        "存在集中生成迹象"
+                        if modified_times and len(set(modified_times)) <= max(1, len(modified_times) // 4)
+                        else "无组件级时间信息" if not components else "未见明显集中生成特征"
+                    ),
+                }
+            )
+        return rows
     for signal in signals:
         components = signal.document.metadata.get("components", [])
         if not components:

@@ -6,7 +6,13 @@ from pathlib import Path
 from agent_bid_rigging.capabilities import CapabilityContext
 from agent_bid_rigging.capabilities.ocr import OcrCapability, OcrRequest
 from agent_bid_rigging.capabilities.ocr.contracts import OCR_MODE_GENERIC, OCR_MODE_TARGETED
-from agent_bid_rigging.models import ExtractedSignals
+from agent_bid_rigging.models import (
+    ExtractedSignals,
+    FactObservation,
+    LoadedDocument,
+    ReviewFacts,
+    SupplierFacts,
+)
 
 
 def build_review_ocr_request(role: str, supplier: str | None = None) -> OcrRequest:
@@ -137,6 +143,20 @@ def run_ocr_collection(
         "image_index_rows": image_index_rows,
         "image_ocr_rows": image_ocr_rows,
     }
+
+
+def build_review_facts(
+    tender_document: LoadedDocument,
+    bid_signals: list[ExtractedSignals],
+    image_index_rows: list[dict],
+    image_ocr_rows: list[dict],
+) -> ReviewFacts:
+    return ReviewFacts(
+        tender_document=tender_document,
+        suppliers=[_build_supplier_facts(signal, image_ocr_rows) for signal in bid_signals],
+        image_index_rows=[dict(row) for row in image_index_rows],
+        image_ocr_rows=[dict(row) for row in image_ocr_rows],
+    )
 
 
 def merge_ocr_into_signal(signal: ExtractedSignals, ocr_rows: list[dict]) -> None:
@@ -287,3 +307,209 @@ def normalize_text_field(value: object) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     return str(value).strip()
+
+
+def _build_supplier_facts(signal: ExtractedSignals, image_ocr_rows: list[dict]) -> SupplierFacts:
+    supplier_rows = [row for row in image_ocr_rows if row.get("supplier") == signal.document.name]
+    facts = SupplierFacts(
+        supplier=signal.document.name,
+        document=signal.document,
+        text_hash=signal.text_hash,
+        line_count=signal.line_count,
+        token_count=signal.token_count,
+        non_tender_lines=list(signal.non_tender_lines),
+        rare_line_fingerprints=dict(signal.rare_line_fingerprints),
+        candidate_overlap_lines=list(signal.candidate_overlap_lines),
+        company_names=[
+            FactObservation(
+                value=signal.document.name,
+                source_type="text",
+                source_document=signal.document.path,
+                is_primary=True,
+            )
+        ],
+        phones=_build_text_observations(signal.phones, signal.document.path),
+        emails=_build_text_observations(signal.emails, signal.document.path),
+        bank_accounts=_build_text_observations(signal.bank_accounts, signal.document.path),
+        legal_representatives=_build_text_observations(signal.legal_representatives, signal.document.path),
+        addresses=_build_text_observations(signal.addresses, signal.document.path),
+        bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
+        timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
+    )
+
+    for row in supplier_rows:
+        fields = row.get("fields") or {}
+        source_document = row.get("source_path") or signal.document.path
+        source_page = row.get("page_index")
+        confidence = row.get("confidence")
+
+        _append_observation(
+            facts.company_names,
+            normalize_text_field(fields.get("company_name")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.company_names,
+        )
+        _append_observation(
+            facts.phones,
+            normalize_text_field(fields.get("phone")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.phones,
+        )
+        _append_observation(
+            facts.legal_representatives,
+            normalize_text_field(fields.get("legal_representative")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.legal_representatives,
+        )
+        _append_observation(
+            facts.addresses,
+            normalize_text_field(fields.get("address")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.addresses,
+        )
+        _append_observation(
+            facts.manufacturers,
+            normalize_text_field(fields.get("manufacturer")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.manufacturers,
+        )
+        _append_observation(
+            facts.brands,
+            normalize_text_field(fields.get("brand")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.brands,
+        )
+        _append_observation(
+            facts.models,
+            normalize_text_field(fields.get("model")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.models,
+        )
+        _append_observation(
+            facts.license_numbers,
+            normalize_text_field(fields.get("license_number")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.license_numbers,
+        )
+        _append_observation(
+            facts.registration_numbers,
+            normalize_text_field(fields.get("registration_number")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.registration_numbers,
+        )
+
+        amount = parse_ocr_amount(fields.get("bid_total_amount"))
+        if amount is not None:
+            _append_observation(
+                facts.bid_amounts,
+                f"{amount:.2f}",
+                source_document,
+                source_page,
+                confidence,
+                prefer_primary=not facts.bid_amounts,
+            )
+
+        mention = compact_ocr_line(row)
+        if row.get("doc_type") == "authorization_letter":
+            _append_observation(
+                facts.authorization_mentions,
+                mention,
+                source_document,
+                source_page,
+                confidence,
+                prefer_primary=not facts.authorization_mentions,
+            )
+        elif mention and row.get("doc_type") in {"license", "business_license", "registration_certificate"}:
+            _append_observation(
+                facts.authorization_mentions,
+                mention,
+                source_document,
+                source_page,
+                confidence,
+                prefer_primary=False,
+            )
+
+    return facts
+
+
+def _build_text_observations(values: list[str], source_document: str) -> list[FactObservation]:
+    observations: list[FactObservation] = []
+    for index, value in enumerate(values):
+        normalized = normalize_text_field(value)
+        if not normalized:
+            continue
+        observations.append(
+            FactObservation(
+                value=normalized,
+                source_type="text",
+                source_document=source_document,
+                is_primary=index == 0,
+            )
+        )
+    return observations
+
+
+def _build_amount_observations(values: list[float], source_document: str) -> list[FactObservation]:
+    unique_values = sorted(set(values))
+    observations: list[FactObservation] = []
+    for index, value in enumerate(unique_values):
+        observations.append(
+            FactObservation(
+                value=f"{value:.2f}",
+                source_type="text",
+                source_document=source_document,
+                is_primary=index == len(unique_values) - 1,
+            )
+        )
+    return observations
+
+
+def _append_observation(
+    bucket: list[FactObservation],
+    value: str,
+    source_document: str,
+    source_page: int | None,
+    confidence: float | None,
+    *,
+    prefer_primary: bool,
+) -> None:
+    if not value:
+        return
+    if any(item.value == value for item in bucket):
+        return
+    bucket.append(
+        FactObservation(
+            value=value,
+            source_type="ocr",
+            source_document=source_document,
+            source_page=source_page,
+            confidence=confidence,
+            is_primary=prefer_primary,
+        )
+    )
+
+
+def _extract_modified_times(components: list[dict]) -> list[str]:
+    return [
+        component["modified_at"]
+        for component in components
+        if component.get("modified_at")
+    ]

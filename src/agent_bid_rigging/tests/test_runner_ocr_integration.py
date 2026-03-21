@@ -91,8 +91,10 @@ def test_run_review_with_ocr_writes_tables_and_merges_fields(tmp_path: Path, mon
 
     assert report["image_index"]
     assert report["image_ocr_table"]
+    assert report["review_facts"]["suppliers"]
     assert (out_dir / "image_index.json").exists()
     assert (out_dir / "image_ocr_table.json").exists()
+    assert (out_dir / "review_facts.json").exists()
 
     entity_table = json.loads((out_dir / "entity_field_table.json").read_text(encoding="utf-8"))["rows"]
     phone_rows = [row for row in entity_table if row["supplier"] == "alpha" and row["field_name"] == "phones"]
@@ -105,3 +107,7 @@ def test_run_review_with_ocr_writes_tables_and_merges_fields(tmp_path: Path, mon
 
     license_table = json.loads((out_dir / "license_match_table.json").read_text(encoding="utf-8"))["rows"]
     assert "LIC-001" in next(row for row in license_table if row["supplier"] == "alpha")["registration_ids"]
+
+    review_facts = json.loads((out_dir / "review_facts.json").read_text(encoding="utf-8"))
+    alpha_supplier = next(item for item in review_facts["suppliers"] if item["supplier"] == "alpha")
+    assert alpha_supplier["phones"][0]["value"] == "13800000000"
