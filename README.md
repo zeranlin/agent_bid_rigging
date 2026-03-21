@@ -61,6 +61,19 @@ agent-bid-rigging analyze \
   --opinion-mode template
 ```
 
+Minimal web demo:
+
+```bash
+agent-bid-rigging web-demo --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000` to:
+
+- upload one tender file and multiple bid files
+- start a new review run without writing CLI commands
+- watch run state for slow local-LLM cases
+- open `formal_report`, `opinion`, and key evidence tables from the browser
+
 The command creates a timestamped directory under `runs/` containing:
 
 - `manifest.json`

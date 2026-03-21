@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from agent_bid_rigging.core.runner import finish_llm_review, run_review
+from agent_bid_rigging.web import run_demo_server
 
 
 @click.group(invoke_without_command=True)
@@ -106,6 +107,15 @@ def llm_status(
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     click.echo(f"LLM 状态: {payload.get('state', 'unknown')}")
+
+
+@cli.command("web-demo")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8000, type=int, show_default=True)
+@click.option("--base-dir", type=click.Path(), default=None, help="Directory for uploaded files and run artifacts.")
+def web_demo(host: str, port: int, base_dir: str | None) -> None:
+    click.echo(f"启动演示页面: http://{host}:{port}")
+    run_demo_server(host=host, port=port, base_dir=base_dir)
 
 
 @cli.command()
