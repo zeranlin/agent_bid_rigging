@@ -52,9 +52,15 @@ def test_ocr_capability_extracts_pdf_images_and_writes_outputs(tmp_path: Path) -
     payload = result.to_dict()["payload"]
     assert payload["image_count"] >= 1
     assert payload["image_results"][0]["doc_type"] == "license"
+    assert (output_dir / "image_index.json").exists()
+    assert (output_dir / "image_ocr_table.json").exists()
     assert (output_dir / "ocr_result.json").exists()
     assert (output_dir / "ocr_result.md").exists()
     stored = Path(payload["images"][0]["stored_path"])
     assert stored.exists()
     written = json.loads((output_dir / "ocr_result.json").read_text(encoding="utf-8"))
+    image_index = json.loads((output_dir / "image_index.json").read_text(encoding="utf-8"))
+    image_ocr_table = json.loads((output_dir / "image_ocr_table.json").read_text(encoding="utf-8"))
+    assert image_index["rows"][0]["image_id"] == "IMG001"
+    assert image_ocr_table["rows"][0]["doc_type"] == "license"
     assert written["image_results"][0]["fields"]["registration_number"] == "ABC123"

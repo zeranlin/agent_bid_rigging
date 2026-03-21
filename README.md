@@ -84,6 +84,8 @@ agent-bid-rigging ocr \
 
 This command extracts embedded images from a PDF or accepts a standalone image, then uses the configured multimodal model to describe image content and write:
 
+- `image_index.json`
+- `image_ocr_table.json`
 - `ocr_result.json`
 - `ocr_result.md`
 
