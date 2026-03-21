@@ -31,6 +31,29 @@ def test_pdf_tables_extract_bid_total_amount_from_long_pdf(tmp_path: Path) -> No
     assert amount_row["value"] == "350000.00"
 
 
+def test_pdf_tables_extract_bid_total_amount_from_bidder_a_quote_sheet(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[4]
+    source_pdf = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 A.pdf"
+    section_response = build_pdf_sectioning_response(source_pdf, output_dir=tmp_path / "sectioning_a", include_text=True)
+
+    table_response = build_pdf_table_response(source_pdf, output_dir=tmp_path / "tables_a", sections=section_response.sections)
+
+    amount_row = next(row for row in table_response.rows if row.field_name == "bid_total_amount")
+    assert amount_row.value == "1.00"
+    assert amount_row.source_section in {"5.2. 报价单", "报价单"}
+
+
+def test_pdf_tables_prefer_total_amount_over_item_amounts_for_bidder_b(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[4]
+    source_pdf = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 B.pdf"
+    section_response = build_pdf_sectioning_response(source_pdf, output_dir=tmp_path / "sectioning_b", include_text=True)
+
+    table_response = build_pdf_table_response(source_pdf, output_dir=tmp_path / "tables_b", sections=section_response.sections)
+
+    amount_row = next(row for row in table_response.rows if row.field_name == "bid_total_amount")
+    assert amount_row.value == "2000000.00"
+
+
 def test_section_similarity_table_uses_long_pdf_sections(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[4]
     tender_path = root / "test_target" / "wcb" / "pdf2" / "电子商城建设项目 A-投标.pdf"
@@ -102,10 +125,11 @@ def test_review_facts_extract_long_pdf_profile_fields(tmp_path: Path) -> None:
     assert _primary_value(supplier_map["A"], "legal_representatives") == "郑新刚"
     assert _primary_value(supplier_map["A"], "phones") == "*******8093"
     assert "长乐区" in (_primary_value(supplier_map["A"], "addresses") or "")
+    assert _primary_value(supplier_map["A"], "bid_amounts") == "1.00"
 
     assert _primary_value(supplier_map["B"], "company_names") == "投标人 B"
     assert _primary_value(supplier_map["B"], "legal_representatives") == "王淑云"
-    assert _primary_value(supplier_map["B"], "bid_amounts") in {"2000000.00", "943396.23"}
+    assert _primary_value(supplier_map["B"], "bid_amounts") == "2000000.00"
 
     assert _primary_value(supplier_map["C"], "company_names") == "投标人 C"
     assert _primary_value(supplier_map["C"], "phones") == "*******6767"

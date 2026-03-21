@@ -23,7 +23,7 @@ TITLE_PREFIX_PATTERN = re.compile(
 
 SECTION_FAMILIES: list[tuple[str, tuple[str, ...]]] = [
     ("bid_letter", ("响应函", "投标函", "应答函")),
-    ("quotation", ("开标一览表", "报价一览表", "报价表", "投标报价", "分项报价")),
+    ("quotation", ("开标一览表", "报价一览表", "报价表", "报价单", "比选报价表", "投标报价", "分项报价")),
     ("qualification", ("资格审查", "资格性审查", "符合性审查", "资格证明", "相关证明")),
     ("authorization", ("法定代表人", "授权委托书", "授权书", "身份证明")),
     ("business_deviation", ("商务条款响应偏离表", "商务偏离", "商务响应")),

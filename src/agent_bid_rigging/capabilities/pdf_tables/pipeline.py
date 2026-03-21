@@ -69,27 +69,10 @@ def build_pdf_table_response(source: Path, *, output_dir: Path, sections: list[P
 def _extract_bid_total_amount(section: PdfSection) -> PdfTableRow | None:
     text = section.text
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    patterns = [
-        r"(?:小写|投标总价|报价金额|报价)\s*[：:]\s*([0-9][0-9,]*(?:\.\d+)?)",
-        r"(?:人民币|金额)\s*([0-9][0-9,]*(?:\.\d+)?)\s*元",
-    ]
-    candidates: list[str] = []
-    for line in lines[:60]:
-        for pattern in patterns:
-            for match in re.findall(pattern, line):
-                amount = _normalize_amount(match)
-                if amount:
-                    candidates.append(amount)
-    if not candidates:
-        compact = text.replace(" ", "")
-        for pattern in patterns:
-            for match in re.findall(pattern, compact):
-                amount = _normalize_amount(match)
-                if amount:
-                    candidates.append(amount)
-    if not candidates:
+    prioritized_candidates = _extract_prioritized_amounts(lines, text)
+    if not prioritized_candidates:
         return None
-    chosen = max(candidates, key=lambda item: float(item))
+    chosen = prioritized_candidates[0]
     return PdfTableRow(
         table_type="quotation",
         field_name="bid_total_amount",
@@ -109,3 +92,42 @@ def _normalize_amount(value: str) -> str | None:
     if amount < 1:
         return None
     return f"{amount:.2f}"
+
+
+def _extract_prioritized_amounts(lines: list[str], text: str) -> list[str]:
+    compact = re.sub(r"\s+", "", text)
+
+    high_priority_patterns = (
+        r"(?:合计|总报价|投标总价|报价总计|项目报价(?:（人民币元）)?)[:：]?[¥￥]?\s*([0-9][0-9,]*(?:\.\d+)?)",
+        r"总报价.*?[¥￥]\s*([0-9][0-9,]*(?:\.\d+)?)",
+        r"合计[:：]?[¥￥]?\s*([0-9][0-9,]*(?:\.\d+)?)",
+        r"项目报价.*?合计[:：]?[¥￥]?\s*([0-9][0-9,]*(?:\.\d+)?)",
+    )
+    medium_priority_patterns = (
+        r"(?:报价金额|报价|小写)[:：]?[¥￥]?\s*([0-9][0-9,]*(?:\.\d+)?)",
+        r"[¥￥]\s*([0-9][0-9,]*(?:\.\d+)?)",
+        r"(?:人民币|金额)\s*([0-9][0-9,]*(?:\.\d+)?)\s*元",
+    )
+
+    for patterns in (high_priority_patterns, medium_priority_patterns):
+        candidates: list[str] = []
+        for line in lines[:80]:
+            for pattern in patterns:
+                for match in re.findall(pattern, line):
+                    amount = _normalize_amount(match)
+                    if amount:
+                        candidates.append(amount)
+        for pattern in patterns:
+            for match in re.findall(pattern, compact):
+                amount = _normalize_amount(match)
+                if amount:
+                    candidates.append(amount)
+        if candidates:
+            deduped = []
+            seen = set()
+            for value in candidates:
+                if value not in seen:
+                    deduped.append(value)
+                    seen.add(value)
+            return sorted(deduped, key=lambda item: float(item), reverse=True)
+    return []
