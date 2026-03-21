@@ -59,18 +59,29 @@ def run_review(
     base_dir.mkdir(parents=True, exist_ok=True)
     normalized_dir = base_dir / "normalized"
     normalized_dir.mkdir(exist_ok=True)
-    strategy = build_review_strategy(
-        opinion_mode=opinion_mode,
-        enable_ocr=enable_ocr,
-        suppliers=list(bids.keys()),
-        async_llm=_use_async_llm(),
-    )
 
     tender_doc = load_document("tender", "tender", tender_path)
     tender_lines = build_tender_baseline(tender_doc)
     bid_signals: list[ExtractedSignals] = []
+    bid_signals_by_supplier: dict[str, ExtractedSignals] = {}
     image_index_rows: list[dict] = []
     image_ocr_rows: list[dict] = []
+
+    for supplier_name, path in bids.items():
+        loaded = load_document(supplier_name, "bid", path)
+        signals = extract_signals(loaded, tender_lines=tender_lines)
+        bid_signals.append(signals)
+        bid_signals_by_supplier[supplier_name] = signals
+
+    preliminary_assessments = assess_pairs(bid_signals)
+    strategy = build_review_strategy(
+        opinion_mode=opinion_mode,
+        enable_ocr=enable_ocr,
+        suppliers=list(bids.keys()),
+        bid_signals=bid_signals,
+        preliminary_assessments=preliminary_assessments,
+        async_llm=_use_async_llm(),
+    )
     ocr_capability = OcrCapability() if strategy.enable_ocr else None
 
     if ocr_capability is not None and strategy.tender_ocr.enabled:
@@ -87,9 +98,8 @@ def run_review(
         image_ocr_rows.extend(tender_ocr["image_ocr_rows"])
 
     for supplier_name, path in bids.items():
-        loaded = load_document(supplier_name, "bid", path)
-        signals = extract_signals(loaded, tender_lines=tender_lines)
         bid_ocr_plan = strategy.bid_ocr[supplier_name]
+        signals = bid_signals_by_supplier[supplier_name]
         if ocr_capability is not None and bid_ocr_plan.enabled:
             bid_ocr = run_ocr_collection(
                 capability=ocr_capability,
@@ -103,7 +113,6 @@ def run_review(
             image_index_rows.extend(bid_ocr["image_index_rows"])
             image_ocr_rows.extend(bid_ocr["image_ocr_rows"])
             merge_ocr_into_signal(signals, bid_ocr["image_ocr_rows"])
-        bid_signals.append(signals)
         _write_json(normalized_dir / f"{supplier_name}.json", signals.to_dict())
 
     case_manifest = build_case_manifest(

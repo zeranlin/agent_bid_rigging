@@ -94,11 +94,14 @@ def test_build_review_ocr_request_is_targeted_for_review_tasks() -> None:
 
     assert tender_request.mode == "targeted"
     assert "quotation" in tender_request.doc_types
-    assert tender_request.max_sources == 6
+    assert tender_request.max_sources == 3
+    assert tender_request.max_images == 12
 
     assert bid_request.mode == "targeted"
     assert "business_license" in bid_request.doc_types
     assert "开标一览表" in bid_request.file_hints
+    assert bid_request.max_sources == 4
+    assert bid_request.max_images == 20
     assert bid_request.metadata["supplier"] == "alpha"
 
 

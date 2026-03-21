@@ -93,6 +93,8 @@ def test_run_review_with_ocr_writes_tables_and_merges_fields(tmp_path: Path, mon
     assert report["image_ocr_table"]
     assert report["review_facts"]["suppliers"]
     assert report["review_strategy"]["enable_ocr"] is True
+    assert report["review_strategy"]["tender_ocr"]["request"]["max_sources"] == 3
+    assert report["review_strategy"]["bid_ocr"]["alpha"]["request"]["max_images"] == 20
     assert (out_dir / "image_index.json").exists()
     assert (out_dir / "image_ocr_table.json").exists()
     assert (out_dir / "review_facts.json").exists()
