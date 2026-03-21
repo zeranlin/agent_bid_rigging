@@ -4,7 +4,7 @@ import io
 import json
 from pathlib import Path
 
-from agent_bid_rigging.web.app import _derive_supplier_name, create_app
+from agent_bid_rigging.web.app import _derive_supplier_name, _safe_upload_filename, _unique_upload_path, create_app
 
 
 def test_web_index_loads(tmp_path: Path) -> None:
@@ -83,3 +83,17 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
 def test_supplier_name_derivation() -> None:
     assert _derive_supplier_name("投标文件-01-恒禾.zip", 1) == "恒禾"
     assert _derive_supplier_name("bid_beta.docx", 2) == "bid_beta"
+
+
+def test_safe_upload_filename_preserves_readable_chinese_names() -> None:
+    assert _safe_upload_filename("投标文件-01-恒禾.zip") == "投标文件-01-恒禾.zip"
+    assert _safe_upload_filename("../../招标 文件 01.zip") == "招标_文件_01.zip"
+
+
+def test_unique_upload_path_avoids_overwriting_similar_names(tmp_path: Path) -> None:
+    first = _unique_upload_path(tmp_path, "投标文件-01-恒禾.zip")
+    first.write_text("a", encoding="utf-8")
+    second = _unique_upload_path(tmp_path, "投标文件-01-恒禾.zip")
+
+    assert first.name == "投标文件-01-恒禾.zip"
+    assert second.name == "投标文件-01-恒禾_2.zip"

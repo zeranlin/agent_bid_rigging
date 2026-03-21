@@ -10,7 +10,6 @@ from typing import Any
 
 from flask import Flask, abort, jsonify, redirect, render_template_string, request, send_file, url_for
 from werkzeug.datastructures import FileStorage
-from werkzeug.utils import secure_filename
 
 from agent_bid_rigging.core.runner import run_review
 
@@ -514,8 +513,8 @@ def _list_runs(runs_dir: Path) -> list[dict[str, str]]:
 
 def _save_uploaded_file(target_dir: Path, upload: FileStorage) -> Path:
     target_dir.mkdir(parents=True, exist_ok=True)
-    filename = secure_filename(upload.filename or "upload.bin") or "upload.bin"
-    path = target_dir / filename
+    filename = _safe_upload_filename(upload.filename or "upload.bin")
+    path = _unique_upload_path(target_dir, filename)
     upload.save(path)
     return path
 
@@ -539,6 +538,30 @@ def _safe_run_id(raw: str | None) -> str:
         if normalized:
             return normalized
     return f"web_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
+def _safe_upload_filename(raw: str) -> str:
+    normalized = unicodedata.normalize("NFKC", raw).strip()
+    normalized = normalized.replace("\\", "/").split("/")[-1]
+    normalized = re.sub(r"\s+", "_", normalized)
+    normalized = re.sub(r"[^\w\u4e00-\u9fff.\-()（）]+", "_", normalized)
+    normalized = normalized.strip("._-")
+    return normalized or "upload.bin"
+
+
+def _unique_upload_path(target_dir: Path, filename: str) -> Path:
+    candidate = target_dir / filename
+    if not candidate.exists():
+        return candidate
+
+    stem = Path(filename).stem or "upload"
+    suffix = Path(filename).suffix
+    index = 2
+    while True:
+        candidate = target_dir / f"{stem}_{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def _report_links(run_dir: Path) -> list[dict[str, Any]]:
