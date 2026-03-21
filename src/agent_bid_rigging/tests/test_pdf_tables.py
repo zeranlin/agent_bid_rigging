@@ -60,7 +60,7 @@ def test_pdf_tables_prefer_total_amount_over_item_amounts_for_bidder_b(tmp_path:
 
 def test_section_similarity_table_uses_long_pdf_sections(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[4]
-    tender_path = root / "test_target" / "wcb" / "pdf2" / "电子商城建设项目 A-投标.pdf"
+    tender_path = root / "test_target" / "wcb" / "pdf2" / "电子商城建设项目 A-招标.pdf"
     bid_a = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 A.pdf"
     bid_b = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 B.pdf"
 
@@ -99,7 +99,7 @@ def test_section_similarity_table_uses_long_pdf_sections(tmp_path: Path) -> None
 
 def test_review_facts_extract_long_pdf_profile_fields(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[4]
-    tender_path = root / "test_target" / "wcb" / "pdf2" / "电子商城建设项目 A-投标.pdf"
+    tender_path = root / "test_target" / "wcb" / "pdf2" / "电子商城建设项目 A-招标.pdf"
     bid_a = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 A.pdf"
     bid_b = root / "test_target" / "wcb" / "pdf2" / "电子商城项目 A响应文件-投标人 B.pdf"
     bid_c = root / "test_target" / "wcb" / "pdf2" / "电子商城项目A响应文件-投标人 C.pdf"

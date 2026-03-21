@@ -140,7 +140,11 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
     assert "rule report" in body
     assert "大模型版报告" in body
     assert "维度摘要概览" in body
-    assert "主体关联强；报价关联中" in body
+    assert "dimension-chip strong" in body
+    assert "dimension-chip medium" in body
+    assert "主体关联强" in body
+    assert "报价关联中" in body
+    assert "文本与方案关联未命中" not in body
 
 
 def test_supplier_name_derivation() -> None:

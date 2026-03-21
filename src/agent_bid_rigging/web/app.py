@@ -315,6 +315,32 @@ RUN_TEMPLATE = """<!doctype html>
       margin: 0;
       color: var(--ink);
     }
+    .dimension-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 6px 0 0;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+    .dimension-chip.strong {
+      background: #f6dfdf;
+      color: #8b1f1f;
+      border-color: #e5b9b9;
+    }
+    .dimension-chip.medium {
+      background: #f8edd8;
+      color: #8f5d00;
+      border-color: #e8d2a6;
+    }
+    .dimension-chip.weak {
+      background: #e7efe1;
+      color: #256d1b;
+      border-color: #c6dbbb;
+    }
     a.button {
       display: grid;
       gap: 6px;
@@ -456,7 +482,12 @@ RUN_TEMPLATE = """<!doctype html>
         <strong>维度摘要概览</strong>
         <ul>
           {% for item in dimension_overview %}
-          <li><strong>{{ item.pair }}</strong>：{{ item.summary }}</li>
+          <li>
+            <strong>{{ item.pair }}</strong>：
+            {% for chip in item.chips %}
+            <span class="dimension-chip {{ chip.tier }}">{{ chip.label }}{{ chip.tier_label }}</span>
+            {% endfor %}
+          </li>
           {% endfor %}
         </ul>
       </div>
@@ -803,6 +834,7 @@ def _build_dimension_overview(run_dir: Path) -> list[dict[str, str]]:
             {
                 "pair": f"{item.get('supplier_a', '-')} 与 {item.get('supplier_b', '-')}",
                 "summary": summary,
+                "chips": _build_dimension_chips(item.get("dimension_summary", {})),
             }
         )
     return rows
@@ -821,6 +853,23 @@ def _render_dimension_summary_text(summary: dict[str, dict]) -> str:
     if not parts:
         return "六个判断维度均未形成明确命中"
     return "；".join(parts)
+
+
+def _build_dimension_chips(summary: dict[str, dict]) -> list[dict[str, str]]:
+    chips: list[dict[str, str]] = []
+    for key in DIMENSION_ORDER:
+        item = summary.get(key, {})
+        tier = item.get("tier", "none")
+        if tier == "none":
+            continue
+        chips.append(
+            {
+                "label": DIMENSION_LABELS[key],
+                "tier": tier,
+                "tier_label": DIMENSION_TIER_LABELS.get(tier, ""),
+            }
+        )
+    return chips
 
 
 def _resolve_report_variant(run_dir: Path, selected: str) -> tuple[Path, str]:
