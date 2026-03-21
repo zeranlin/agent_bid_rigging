@@ -328,7 +328,7 @@ def build_review_conclusion_table(assessments: list[PairwiseAssessment]) -> dict
         pair_label = f"{assessment.supplier_a} 与 {assessment.supplier_b}"
         if assessment.findings:
             suspicious_clues.append(
-                f"{pair_label} 存在 {assessment.risk_level} 风险线索，分值 {assessment.risk_score}。"
+                f"{pair_label} 存在需要进一步核查的可疑线索。"
             )
         else:
             exclusionary_factors.append(f"{pair_label} 未发现明显异常信号。")
@@ -642,7 +642,7 @@ def build_formal_report_markdown(report: dict) -> str:
         [
             "",
             f"审查人：政府采购投标文件审查  ",
-            f"审查日期：{report['project_basic_info']['generated_at'][:10]}",
+            f"审查日期：{_format_generated_at(report['project_basic_info']['generated_at'])}",
         ]
     )
     return "\n".join(lines)
@@ -747,12 +747,12 @@ def _build_structure_summary(
     avg_overlap = sum(row["category_overlap_ratio"] for row in structure_similarity_table) / len(structure_similarity_table)
     high_pairs = [row for row in risk_score_table if row["technical_text_score"] > 0]
     points = [
-        f"各投标文件目录结构和材料类别存在一定相似性，平均类别重合度约为 `{avg_overlap:.2f}`。",
+        f"各投标文件目录结构和材料类别存在一定相似性，整体上有约{_overlap_ratio_text(avg_overlap)}的材料类别可相互对应。",
         "该类结构相似性在电子采购平台标准模板场景下具有一定普遍性，应结合非模板文本和主体信息综合判断。",
     ]
     for row in high_pairs[:3]:
         points.append(
-            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}存在非模板文本重合线索，主评分中对应文本相似分为 `{row['technical_text_score']}`。"
+            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}存在非模板文本重合线索，相关内容相似程度较高。"
         )
     opinion = "投标文件框架相似具有模板化解释空间，但已出现的非模板文本重合线索应列入进一步复核范围。"
     return {"points": points, "opinion": opinion}
@@ -814,9 +814,7 @@ def _build_suspicious_points(
     for row in risk_score_table:
         if row["risk_level"] in {"medium", "high", "critical"}:
             pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
-            points.append(
-                f"{pair_label}之间存在 `{row['risk_level']}` 风险线索，总分为 `{row['total_score']}`。"
-            )
+            points.append(f"{pair_label}之间存在需要进一步核查的可疑线索。")
             evidence_key = f"{row['supplier_a']} 与 {row['supplier_b']}"
             pair_evidence = [
                 item for item in evidence_by_pair.get(evidence_key, [])
@@ -1397,3 +1395,14 @@ def _replace_supplier_names(text: str, supplier_name_map: dict[str, str] | None 
     for short, full in sorted(supplier_name_map.items(), key=lambda item: len(item[0]), reverse=True):
         updated = updated.replace(short, full)
     return updated
+
+
+def _format_generated_at(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return value.replace("T", " ")
+
+
+def _overlap_ratio_text(value: float) -> str:
+    return f"{round(value * 100)}%"

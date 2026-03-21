@@ -256,7 +256,7 @@ def _format_risk_summary(risk_summary: list[dict]) -> str:
     lines = []
     for item in risk_summary:
         lines.append(
-            f"- {item['supplier_a']} 与 {item['supplier_b']}：总分 {item['total_score']}，风险等级 {item['risk_level']}。"
+            f"- {item['supplier_a']} 与 {item['supplier_b']}：当前已识别出{_risk_level_text(item['risk_level'])}，建议结合相关证据继续复核。"
         )
     return "\n".join(lines)
 
@@ -270,3 +270,13 @@ def _format_evidence_summary(evidence_summary: list[dict]) -> str:
             f"- {item['pair']}：{item['finding_title']}，证据等级 {item['evidence_grade']}。"
         )
     return "\n".join(lines)
+
+
+def _risk_level_text(level: str) -> str:
+    mapping = {
+        "low": "暂未发现明显异常信号",
+        "medium": "需要进一步核查的可疑线索",
+        "high": "较强可疑线索",
+        "critical": "较强可疑线索",
+    }
+    return mapping.get(level, "可疑线索")

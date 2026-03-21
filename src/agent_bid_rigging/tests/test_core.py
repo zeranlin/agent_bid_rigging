@@ -339,6 +339,10 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "内蒙古恒禾创业信息科技服务有限公司与华康君安（北京）科技有限公司" in markdown
     assert "内蒙古恒禾创业信息科技服务有限公司与内蒙古维美科技有限公司" in markdown
     assert "部分供应商文件存在集中生成迹象" not in markdown
+    assert "平均类别重合度" not in markdown
+    assert "medium 风险线索" not in markdown
+    assert "总分为" not in markdown
+    assert "审查日期：2026-03-21 10:00:00" in markdown
 
 
 def test_risk_score_table_matches_pairwise_assessment() -> None:
