@@ -383,30 +383,61 @@ RUN_TEMPLATE = """<!doctype html>
       line-height: 1.5;
     }
     .report-viewer {
-      padding: 26px;
-      border-radius: 18px;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 54px 46px;
+      border-radius: 22px;
       background:
         linear-gradient(180deg, rgba(255,255,255,0.95), rgba(249,244,236,0.98));
       border: 1px solid #e0d4c5;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
-      white-space: pre-wrap;
-      line-height: 1.9;
-      font-size: 15px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.72),
+        0 16px 34px rgba(87, 60, 30, 0.08);
+      line-height: 1.72;
+      font-size: 16px;
     }
     .report-viewer h1,
     .report-viewer h2,
     .report-viewer h3,
     .report-viewer h4 {
       color: var(--accent);
-      margin: 1.2em 0 0.5em;
+      margin: 1.05em 0 0.45em;
+      letter-spacing: 0.01em;
     }
     .report-viewer h1:first-child,
     .report-viewer h2:first-child,
     .report-viewer h3:first-child { margin-top: 0; }
-    .report-viewer p { margin: 0.5em 0; }
+    .report-viewer h1 {
+      font-size: 42px;
+      line-height: 1.2;
+      text-align: center;
+      margin-bottom: 1em;
+      padding-bottom: 0.45em;
+      border-bottom: 1px solid #eadbc8;
+    }
+    .report-viewer h2 {
+      font-size: 24px;
+      margin-top: 1.35em;
+    }
+    .report-viewer h3 {
+      font-size: 19px;
+    }
+    .report-viewer p {
+      margin: 0.3em 0 0.85em;
+      color: #27313a;
+    }
     .report-viewer ul,
-    .report-viewer ol { margin: 0.5em 0 0.75em 1.4em; }
-    .report-viewer li { margin: 0.3em 0; }
+    .report-viewer ol {
+      margin: 0.35em 0 0.95em 1.45em;
+      padding-left: 0.4em;
+    }
+    .report-viewer li { margin: 0.22em 0; }
+    .report-viewer li > p { margin: 0.15em 0; }
+    .report-viewer br + br {
+      display: block;
+      content: "";
+      margin-top: 0.45em;
+    }
     .report-viewer code {
       padding: 2px 6px;
       border-radius: 8px;
@@ -429,7 +460,7 @@ RUN_TEMPLATE = """<!doctype html>
     }
     .report-viewer blockquote {
       margin: 0.8em 0;
-      padding: 0.2em 1em;
+      padding: 0.35em 1em;
       border-left: 4px solid #d2b08d;
       color: #5a4b3d;
       background: #fcf7f0;
@@ -511,6 +542,13 @@ RUN_TEMPLATE = """<!doctype html>
     @media (max-width: 900px) {
       main { width: min(100vw - 24px, 1120px); }
       .meta, .links { grid-template-columns: 1fr; }
+      .report-viewer {
+        padding: 24px 22px 28px;
+        font-size: 15px;
+      }
+      .report-viewer h1 {
+        font-size: 30px;
+      }
     }
   </style>
   {% if auto_refresh %}
