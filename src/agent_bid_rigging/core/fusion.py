@@ -370,6 +370,8 @@ def _build_supplier_facts(
                 prefer_primary=not facts.bid_amounts,
             )
 
+    _augment_supplier_profile_observations(facts)
+
     for row in supplier_rows:
         fields = row.get("fields") or {}
         source_document = row.get("source_path") or signal.document.path
@@ -502,7 +504,7 @@ def _build_text_observations(values: list[str], source_document: str) -> list[Fa
 
 def _build_company_name_observations(signal: ExtractedSignals) -> list[FactObservation]:
     observations: list[FactObservation] = []
-    extracted = _extract_company_name_from_text(signal.document.text)
+    extracted = _extract_company_name_from_profile_text(signal.document.text)
     if extracted:
         observations.append(
             FactObservation(
@@ -537,6 +539,82 @@ def _build_amount_observations(values: list[float], source_document: str) -> lis
             )
         )
     return observations
+
+
+def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
+    profile_text = _build_profile_text(facts)
+    source_document = facts.document.path
+    source_page = _first_profile_page(facts)
+
+    company_name = _extract_company_name_from_profile_text(profile_text)
+    if company_name:
+        _promote_primary_observation(
+            facts.company_names,
+            company_name,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.93,
+            source_type="section",
+        )
+
+    legal = _extract_legal_representative_from_profile_text(profile_text)
+    if legal:
+        _promote_primary_observation(
+            facts.legal_representatives,
+            legal,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.9,
+            source_type="section",
+        )
+
+    phone = _extract_phone_from_profile_text(profile_text)
+    if phone:
+        _promote_primary_observation(
+            facts.phones,
+            phone,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.85,
+            source_type="section",
+        )
+
+    address = _extract_address_from_profile_text(profile_text)
+    if address:
+        _promote_primary_observation(
+            facts.addresses,
+            address,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.82,
+            source_type="section",
+        )
+
+    facts.company_names = _filter_company_name_observations(facts.company_names)
+    facts.legal_representatives = _filter_legal_observations(facts.legal_representatives)
+    facts.addresses = _filter_address_observations(facts.addresses)
+
+
+def _build_profile_text(facts: SupplierFacts) -> str:
+    page_refs = facts.document.metadata.get("components", [])
+    first_pages = "\n".join(component.get("text", "") for component in page_refs[:8] if component.get("text"))
+    if not first_pages:
+        first_pages = facts.document.text[:4000]
+    relevant_sections = []
+    for row in facts.section_rows:
+        title = str(row.get("title") or "")
+        family = str(row.get("family") or "")
+        if family in {"bid_letter", "qualification", "authorization", "quotation"} or any(
+            token in title for token in ("法定代表", "授权", "资格", "基本情况", "报价", "投标函", "响应函")
+        ):
+            relevant_sections.append(str(row.get("text") or ""))
+    return "\n".join(part for part in [first_pages, *relevant_sections] if part).strip()
+
+
+def _first_profile_page(facts: SupplierFacts) -> int | None:
+    if facts.section_rows:
+        return min((row.get("start_page") for row in facts.section_rows if row.get("start_page") is not None), default=None)
+    return None
 
 
 def _append_observation(
@@ -590,6 +668,40 @@ def _append_capability_observation(
     )
 
 
+def _promote_primary_observation(
+    bucket: list[FactObservation],
+    value: str,
+    *,
+    source_document: str,
+    source_page: int | None,
+    confidence: float | None,
+    source_type: str,
+) -> None:
+    if not value:
+        return
+    existing = next((item for item in bucket if item.value == value), None)
+    for item in bucket:
+        item.is_primary = False
+    if existing is not None:
+        existing.is_primary = True
+        existing.source_document = source_document
+        existing.source_page = source_page
+        existing.confidence = confidence
+        existing.source_type = source_type
+        return
+    bucket.insert(
+        0,
+        FactObservation(
+            value=value,
+            source_type=source_type,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=confidence,
+            is_primary=True,
+        ),
+    )
+
+
 def _extract_modified_times(components: list[dict]) -> list[str]:
     return [
         component["modified_at"]
@@ -604,3 +716,116 @@ def _extract_company_name_from_text(text: str) -> str | None:
     if not matches:
         return None
     return matches[0].strip()
+
+
+def _extract_company_name_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:比选单位名称|投标人名称|投标人全称|投标人|比选单位)\s*[:：]\s*([^\n（(]{2,40})",
+        r"投\s*标\s*人\s*[:：]\s*([^\n（(]{2,40})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _clean_company_like_value(match.group(1))
+            if value:
+                return value
+    return _extract_company_name_from_text("\n".join(text.splitlines()[:40]))
+
+
+def _extract_legal_representative_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"姓\s*名\s*[:：]\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*(?:性别|职务|年)",
+        r"兹证明\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*[（(]姓名",
+        r"本人\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*(?:[（(]姓名[)）])?\s*系",
+        r"法人代表\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*授权",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).strip()
+            if value and value not in {"单位负责人", "法定代表人"}:
+                return value
+    return None
+
+
+def _extract_phone_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:联系方式|联系电话|电话)\s*[:：]\s*([0-9*－—\-]{7,20})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).replace("－", "-").replace("—", "-").strip()
+            if value:
+                return value
+    return None
+
+
+def _extract_address_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:地\s*址|联系地址|办公地址)\s*[:：]\s*([^\n]{6,120})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = re.sub(r"\s+", " ", match.group(1)).strip(" ：:;；,.，")
+            if value and "发票等信息" not in value and "商品数量" not in value:
+                return value
+    return None
+
+
+def _clean_company_like_value(value: str) -> str:
+    cleaned = re.sub(r"[（(].*$", "", value).strip()
+    cleaned = cleaned.strip("：:;；,.， ")
+    if len(cleaned) < 2:
+        return ""
+    return cleaned
+
+
+def _filter_company_name_observations(observations: list[FactObservation]) -> list[FactObservation]:
+    filtered = [item for item in observations if _looks_like_company_name(item.value)]
+    return _rebuild_primary(filtered)
+
+
+def _filter_legal_observations(observations: list[FactObservation]) -> list[FactObservation]:
+    filtered = [item for item in observations if _looks_like_person_name(item.value)]
+    return _rebuild_primary(filtered)
+
+
+def _filter_address_observations(observations: list[FactObservation]) -> list[FactObservation]:
+    filtered = [item for item in observations if _looks_like_address(item.value)]
+    return _rebuild_primary(filtered)
+
+
+def _rebuild_primary(observations: list[FactObservation]) -> list[FactObservation]:
+    if not observations:
+        return observations
+    has_primary = any(item.is_primary for item in observations)
+    if not has_primary:
+        observations[0].is_primary = True
+    return observations
+
+
+def _looks_like_company_name(value: str) -> bool:
+    return bool(value) and (
+        "投标人" in value
+        or "公司" in value
+        or "集团" in value
+        or "企业" in value
+    )
+
+
+def _looks_like_person_name(value: str) -> bool:
+    if not value:
+        return False
+    if any(token in value for token in ("单位负责人", "证明书", "法定代表", "控股", "关系", "企业", "签字", "盖章")):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value))
+
+
+def _looks_like_address(value: str) -> bool:
+    if not value:
+        return False
+    if "@" in value or "发票等信息" in value or "商品数量" in value:
+        return False
+    return any(token in value for token in ("省", "市", "区", "县", "路", "街", "号", "镇", "大厦", "园", "楼"))

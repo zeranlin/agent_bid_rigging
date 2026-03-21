@@ -808,6 +808,8 @@ def _build_structure_summary(
             f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}的{family_text}章节存在较高相似度，"
             f"相似度约为{row['similarity']:.0%}，对应起始页分别为第{row['page_a']}页和第{row['page_b']}页。"
         )
+    if section_similarity_table and not any(row["similarity"] >= 0.75 for row in section_similarity_table):
+        points.append("对技术方案、实施方案和培训方案进行章节级比对后，当前未发现达到高相似度阈值的章节组合。")
     points.append("上述相似表述多位于项目实施方案、培训方案和售后服务承诺部分，存在统一模板、行业常见写法或内部规范表述的可能。")
     opinion = "投标文件框架相似具有模板化解释空间。对于相似文本片段，应结合主体关联、报价形成、授权链和原始电子文件等证据综合判断，不能仅凭文本相似直接作出定性。"
     return {"points": points, "opinion": opinion}
