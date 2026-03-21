@@ -5,10 +5,12 @@ import re
 import threading
 import unicodedata
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, abort, jsonify, redirect, render_template_string, request, send_file, url_for
+from markdown_it import MarkdownIt
 from werkzeug.datastructures import FileStorage
 
 from agent_bid_rigging.core.runner import run_review
@@ -35,6 +37,7 @@ DIMENSION_TIER_LABELS = {
     "weak": "弱",
     "none": "未命中",
 }
+MARKDOWN_RENDERER = MarkdownIt("commonmark", {"html": False, "linkify": True, "breaks": True})
 
 INDEX_TEMPLATE = """<!doctype html>
 <html lang="zh-CN">
@@ -390,6 +393,67 @@ RUN_TEMPLATE = """<!doctype html>
       line-height: 1.9;
       font-size: 15px;
     }
+    .report-viewer h1,
+    .report-viewer h2,
+    .report-viewer h3,
+    .report-viewer h4 {
+      color: var(--accent);
+      margin: 1.2em 0 0.5em;
+    }
+    .report-viewer h1:first-child,
+    .report-viewer h2:first-child,
+    .report-viewer h3:first-child { margin-top: 0; }
+    .report-viewer p { margin: 0.5em 0; }
+    .report-viewer ul,
+    .report-viewer ol { margin: 0.5em 0 0.75em 1.4em; }
+    .report-viewer li { margin: 0.3em 0; }
+    .report-viewer code {
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: #f3e8d9;
+      color: #5c3210;
+      font-size: 0.95em;
+    }
+    .report-viewer pre {
+      background: #1d2429;
+      color: #f7f1e8;
+      border-radius: 16px;
+      padding: 16px;
+      overflow: auto;
+      margin: 0.8em 0;
+    }
+    .report-viewer pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .report-viewer blockquote {
+      margin: 0.8em 0;
+      padding: 0.2em 1em;
+      border-left: 4px solid #d2b08d;
+      color: #5a4b3d;
+      background: #fcf7f0;
+    }
+    .report-viewer table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.8em 0;
+      font-size: 14px;
+      background: rgba(255,255,255,0.82);
+    }
+    .report-viewer th,
+    .report-viewer td {
+      border: 1px solid #dfd2c1;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .report-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
     .report-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -513,7 +577,10 @@ RUN_TEMPLATE = """<!doctype html>
     <section class="panel">
       <h2>报告查看</h2>
       <p class="section-note">这里直接展示当前案件的正式报告正文。</p>
-      <div class="report-viewer">{{ report_content }}</div>
+      <div class="report-actions">
+        <a class="button secondary" href="{{ export_href }}">导出当前报告</a>
+      </div>
+      <div class="report-viewer">{{ report_content|safe }}</div>
     </section>
     {% endif %}
   </main>
@@ -615,7 +682,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         report_path, report_label = _resolve_report_variant(run_dir, selected_report)
         report_content = None
         if report_path.exists():
-            report_content = report_path.read_text(encoding="utf-8")
+            report_content = _render_markdown(report_path.read_text(encoding="utf-8"))
         return render_template_string(
             RUN_TEMPLATE,
             run_id=run_id,
@@ -626,6 +693,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
             report_links=_report_links(run_id, run_dir, selected_report),
             dimension_overview=_build_dimension_overview(run_dir),
+            export_href=url_for("artifact", run_id=run_id, name=report_path.name, download=1),
             report_content=report_content,
             auto_refresh=status.get("state") in {"queued", "running"},
         )
@@ -657,7 +725,8 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             abort(403)
         if not path.exists() or not path.is_file():
             abort(404)
-        return send_file(path)
+        download = request.args.get("download") == "1"
+        return send_file(path, as_attachment=download, download_name=path.name if download else None)
 
     return app
 
@@ -925,3 +994,10 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _render_markdown(text: str) -> str:
+    try:
+        return MARKDOWN_RENDERER.render(text)
+    except Exception:  # noqa: BLE001
+        return f"<pre>{escape(text)}</pre>"

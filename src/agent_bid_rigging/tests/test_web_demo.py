@@ -137,7 +137,7 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
 
     body = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert "rule report" in body
+    assert ">rule report</p>" in body or "<p>rule report</p>" in body
     assert "大模型版报告" in body
     assert "维度摘要概览" in body
     assert "dimension-chip strong" in body
@@ -145,6 +145,21 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
     assert "主体关联强" in body
     assert "报价关联中" in body
     assert "文本与方案关联未命中" not in body
+    assert "导出当前报告" in body
+
+
+def test_artifact_download_supports_export(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "demo_case"
+    run_dir.mkdir(parents=True)
+    report_path = run_dir / "formal_report.md"
+    report_path.write_text("# report", encoding="utf-8")
+
+    response = client.get("/runs/demo_case/artifacts/formal_report.md?download=1")
+
+    assert response.status_code == 200
+    assert "attachment" in response.headers.get("Content-Disposition", "")
 
 
 def test_supplier_name_derivation() -> None:
