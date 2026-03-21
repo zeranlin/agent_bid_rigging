@@ -88,6 +88,39 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
     assert payload["review_mode"] == "rule"
 
 
+def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "demo_case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "web_job.json").write_text(
+        json.dumps(
+            {
+                "run_id": "demo_case",
+                "state": "completed",
+                "review_mode": "llm_ocr",
+                "opinion_mode": "llm",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "llm_status.json").write_text(
+        json.dumps({"requested_mode": "llm", "state": "completed"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (run_dir / "formal_report.md").write_text("main report", encoding="utf-8")
+    (run_dir / "formal_report.rule.md").write_text("rule report", encoding="utf-8")
+    (run_dir / "formal_report.llm.md").write_text("llm report", encoding="utf-8")
+
+    response = client.get("/runs/demo_case?report=rule")
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "rule report" in body
+    assert "大模型版报告" in body
+
+
 def test_supplier_name_derivation() -> None:
     assert _derive_supplier_name("投标文件-01-恒禾.zip", 1) == "恒禾"
     assert _derive_supplier_name("bid_beta.docx", 2) == "bid_beta"

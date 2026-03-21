@@ -287,6 +287,13 @@ RUN_TEMPLATE = """<!doctype html>
       min-height: 92px;
       align-content: center;
     }
+    a.button.active {
+      background: linear-gradient(180deg, #975200 0%, #7c3f00 100%);
+      color: white;
+      box-shadow: 0 12px 28px rgba(124, 63, 0, 0.22);
+      border: 0;
+    }
+    a.button.active span { color: rgba(255,255,255,0.82); }
     a.button strong { font-size: 20px; }
     a.button span { font-size: 13px; color: rgba(255,255,255,0.82); }
     a.secondary {
@@ -397,7 +404,7 @@ RUN_TEMPLATE = """<!doctype html>
       <p class="section-note">演示页默认只突出正式报告入口；规则审查展示 `formal_report.md`，大模型审查优先展示 `formal_report.llm.md`。</p>
       <div class="links">
         {% for item in report_links %}
-        <a class="button {% if item.secondary %}secondary{% endif %}" href="{{ item.href }}">
+        <a class="button {% if item.secondary %}secondary{% endif %} {% if item.active %}active{% endif %}" href="{{ item.href }}">
           <strong>{{ item.label }}</strong>
           <span>{{ item.caption }}</span>
         </a>
@@ -535,7 +542,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             status=status,
             mode_label=_review_mode_label(job.get("review_mode")),
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
-            report_links=_report_links(run_dir),
+            report_links=_report_links(run_id, run_dir, selected_report),
             report_content=report_content,
             auto_refresh=status.get("state") in {"queued", "running"},
         )
@@ -553,7 +560,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
                 "job": job,
                 "llm_status": status,
                 "review_mode": job.get("review_mode", "rule"),
-                "available_reports": [item["label"] for item in _report_links(run_dir)],
+                "available_reports": [item["label"] for item in _report_links(run_id, run_dir, "main")],
             }
         )
 
@@ -709,22 +716,23 @@ def _unique_upload_path(target_dir: Path, filename: str) -> Path:
         index += 1
 
 
-def _report_links(run_dir: Path) -> list[dict[str, Any]]:
+def _report_links(run_id: str, run_dir: Path, selected: str) -> list[dict[str, Any]]:
     mapping = [
-        ("formal_report.md", "主报告", "当前正式报告主入口"),
-        ("formal_report.rule.md", "规则版报告", "规则链路生成的正式报告"),
-        ("formal_report.llm.md", "大模型版报告", "LLM + OCR 增强版正式报告"),
+        ("formal_report.md", "主报告", "当前正式报告主入口", "main"),
+        ("formal_report.rule.md", "规则版报告", "规则链路生成的正式报告", "rule"),
+        ("formal_report.llm.md", "大模型版报告", "LLM + OCR 增强版正式报告", "llm"),
     ]
     links = []
-    for name, label, caption in mapping:
+    for name, label, caption, key in mapping:
         path = run_dir / name
         if path.exists():
             links.append(
                 {
                     "label": label,
                     "caption": caption,
-                    "href": url_for("artifact", run_id=run_dir.name, name=name),
+                    "href": url_for("run_detail", run_id=run_id, report=key),
                     "secondary": name != "formal_report.md",
+                    "active": selected == key,
                 }
             )
     return links
