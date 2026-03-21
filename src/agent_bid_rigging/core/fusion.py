@@ -227,6 +227,9 @@ def append_ocr_entity_rows(entity_field_table: list[dict], ocr_rows: list[dict])
     field_mapping = {
         "company_name": "company_name",
         "legal_representative": "legal_representatives",
+        "authorized_representative": "authorized_representatives",
+        "unified_social_credit_code": "unified_social_credit_codes",
+        "social_credit_code": "unified_social_credit_codes",
         "bid_total_amount": "bid_amounts",
         "address": "addresses",
         "phone": "phones",
@@ -350,7 +353,9 @@ def _build_supplier_facts(
         phones=_build_text_observations(signal.phones, signal.document.path),
         emails=_build_text_observations(signal.emails, signal.document.path),
         bank_accounts=_build_text_observations(signal.bank_accounts, signal.document.path),
+        unified_social_credit_codes=[],
         legal_representatives=_build_text_observations(signal.legal_representatives, signal.document.path),
+        authorized_representatives=[],
         addresses=_build_text_observations(signal.addresses, signal.document.path),
         bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
@@ -401,6 +406,22 @@ def _build_supplier_facts(
             source_page,
             confidence,
             prefer_primary=not facts.legal_representatives,
+        )
+        _append_observation(
+            facts.authorized_representatives,
+            normalize_text_field(fields.get("authorized_representative") or fields.get("authorized_person")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorized_representatives,
+        )
+        _append_observation(
+            facts.unified_social_credit_codes,
+            _normalize_credit_code(fields.get("unified_social_credit_code") or fields.get("social_credit_code")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.unified_social_credit_codes,
         )
         _append_observation(
             facts.addresses,
@@ -568,6 +589,17 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
             source_type="section",
         )
 
+    authorized = _extract_authorized_representative_from_profile_text(profile_text)
+    if authorized:
+        _promote_primary_observation(
+            facts.authorized_representatives,
+            authorized,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.88,
+            source_type="section",
+        )
+
     phone = _extract_phone_from_profile_text(profile_text)
     if phone:
         _promote_primary_observation(
@@ -576,6 +608,17 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
             source_document=source_document,
             source_page=source_page,
             confidence=0.85,
+            source_type="section",
+        )
+
+    credit_code = _extract_unified_social_credit_code_from_profile_text(profile_text)
+    if credit_code:
+        _promote_primary_observation(
+            facts.unified_social_credit_codes,
+            credit_code,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.94,
             source_type="section",
         )
 
@@ -592,7 +635,9 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
 
     facts.company_names = _filter_company_name_observations(facts.company_names)
     facts.legal_representatives = _filter_legal_observations(facts.legal_representatives)
+    facts.authorized_representatives = _filter_legal_observations(facts.authorized_representatives)
     facts.addresses = _filter_address_observations(facts.addresses)
+    facts.unified_social_credit_codes = _filter_credit_code_observations(facts.unified_social_credit_codes)
 
 
 def _build_profile_text(facts: SupplierFacts) -> str:
@@ -748,6 +793,21 @@ def _extract_legal_representative_from_profile_text(text: str) -> str | None:
     return None
 
 
+def _extract_authorized_representative_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:委托代理人|被授权人|授权代表|代理人)\s*[:：]\s*([A-Za-z\u4e00-\u9fff]{2,8})",
+        r"现授权委托\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*(?:为|作为)我",
+        r"特委托\s*([A-Za-z\u4e00-\u9fff]{2,8})\s*(?:为|作为)我",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).strip()
+            if value and value not in {"法定代表人", "授权代表", "委托代理人", "代理人"}:
+                return value
+    return None
+
+
 def _extract_phone_from_profile_text(text: str) -> str | None:
     patterns = (
         r"(?:联系方式|联系电话|电话)\s*[:：]\s*([0-9*－—\-]{7,20})",
@@ -758,6 +818,17 @@ def _extract_phone_from_profile_text(text: str) -> str | None:
             value = match.group(1).replace("－", "-").replace("—", "-").strip()
             if value:
                 return value
+    return None
+
+
+def _extract_unified_social_credit_code_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:统一社会信用代码|社会信用代码|信用代码)\s*[:：]?\s*([0-9A-Z]{18})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
     return None
 
 
@@ -797,6 +868,11 @@ def _filter_address_observations(observations: list[FactObservation]) -> list[Fa
     return _rebuild_primary(filtered)
 
 
+def _filter_credit_code_observations(observations: list[FactObservation]) -> list[FactObservation]:
+    filtered = [item for item in observations if _looks_like_credit_code(item.value)]
+    return _rebuild_primary(filtered)
+
+
 def _rebuild_primary(observations: list[FactObservation]) -> list[FactObservation]:
     if not observations:
         return observations
@@ -829,3 +905,12 @@ def _looks_like_address(value: str) -> bool:
     if "@" in value or "发票等信息" in value or "商品数量" in value:
         return False
     return any(token in value for token in ("省", "市", "区", "县", "路", "街", "号", "镇", "大厦", "园", "楼"))
+
+
+def _looks_like_credit_code(value: str) -> bool:
+    return bool(re.fullmatch(r"[0-9A-Z]{18}", value or ""))
+
+
+def _normalize_credit_code(value: object) -> str:
+    normalized = normalize_text_field(value).upper().replace(" ", "")
+    return normalized if _looks_like_credit_code(normalized) else ""

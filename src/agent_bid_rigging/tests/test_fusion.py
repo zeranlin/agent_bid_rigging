@@ -54,6 +54,8 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
             "fields": {
                 "company_name": "测试公司",
                 "legal_representative": "张三",
+                "authorized_representative": "李四",
+                "unified_social_credit_code": "91150100MA0EXAMPLE",
                 "address": "示例地址",
                 "phone": "13800000000",
                 "manufacturer": "测试厂家",
@@ -67,6 +69,14 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
     append_ocr_license_rows(license_rows, ocr_rows)
 
     assert any(row["field_name"] == "phones" for row in entity_rows)
+    assert any(
+        row["field_name"] == "authorized_representatives" and row["values"] == ["李四"]
+        for row in entity_rows
+    )
+    assert any(
+        row["field_name"] == "unified_social_credit_codes" and row["values"] == ["91150100MA0EXAMPLE"]
+        for row in entity_rows
+    )
     assert authorization_rows[0]["manufacturer_mentions"] == ["测试厂家"]
     assert authorization_rows[0]["authorization_mentions"]
     assert "LIC-001" in license_rows[0]["registration_ids"]
@@ -108,7 +118,11 @@ def test_build_review_ocr_request_is_targeted_for_review_tasks() -> None:
 def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
     signal = extract_signals(
-        load_document_from_text("alpha", "bid", "内蒙古阿尔法科技有限公司\n投标总报价：100000\n邮箱：alpha@example.com")
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "内蒙古阿尔法科技有限公司\n统一社会信用代码：91150105MA0ABCDE1X\n委托代理人：李四\n投标总报价：100000\n邮箱：alpha@example.com",
+        )
     )
     ocr_rows = [
         {
@@ -121,6 +135,8 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
             "fields": {
                 "company_name": "阿尔法公司",
                 "legal_representative": "张三",
+                "authorized_representative": "李四",
+                "unified_social_credit_code": "91150105MA0ABCDE1X",
                 "phone": "13800000000",
                 "license_number": "LIC-001",
             },
@@ -133,5 +149,7 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].emails[0].value == "alpha@example.com"
     assert review_facts.suppliers[0].phones[0].value == "13800000000"
     assert review_facts.suppliers[0].license_numbers[0].value == "LIC-001"
+    assert review_facts.suppliers[0].authorized_representatives[0].value == "李四"
+    assert review_facts.suppliers[0].unified_social_credit_codes[0].value == "91150105MA0ABCDE1X"
     assert review_facts.suppliers[0].company_names[0].is_primary is True
     assert review_facts.suppliers[0].company_names[0].value == "内蒙古阿尔法科技有限公司"

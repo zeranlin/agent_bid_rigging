@@ -213,7 +213,9 @@ def build_entity_field_table(signals: ReviewFacts | list[ExtractedSignals]) -> l
             "phones",
             "emails",
             "bank_accounts",
+            "unified_social_credit_codes",
             "legal_representatives",
+            "authorized_representatives",
             "addresses",
             "bid_amounts",
         )
@@ -711,7 +713,9 @@ def _build_supplier_profiles(
                 "phone": _first_or_none(doc.get("phones", [])),
                 "email": _first_or_none(doc.get("emails", [])),
                 "bank_account": _first_or_none(doc.get("bank_accounts", [])),
+                "unified_social_credit_code": _first_or_none(doc.get("unified_social_credit_codes", [])),
                 "legal_representative": _clean_person_name(_first_or_none(doc.get("legal_representatives", []))),
+                "authorized_representative": _clean_person_name(_first_or_none(doc.get("authorized_representatives", []))),
                 "address": _first_or_none(doc.get("addresses", [])),
                 "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
                 "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
@@ -739,7 +743,9 @@ def _build_supplier_profiles_from_facts(
                 "phone": _primary_value(supplier, "phones"),
                 "email": _primary_value(supplier, "emails"),
                 "bank_account": _primary_value(supplier, "bank_accounts"),
+                "unified_social_credit_code": _primary_value(supplier, "unified_social_credit_codes"),
                 "legal_representative": _clean_person_name(_primary_value(supplier, "legal_representatives")),
+                "authorized_representative": _clean_person_name(_primary_value(supplier, "authorized_representatives")),
                 "address": _primary_value(supplier, "addresses"),
                 "authorization_summary": auth_map.get(supplier.supplier, {}).get("summary", "未发现明确授权链线索"),
                 "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
@@ -819,9 +825,14 @@ def _build_identity_points(profiles: list[dict]) -> list[str]:
     points: list[str] = []
     for profile in profiles:
         legal = profile.get("legal_representative") or "未自动识别"
+        authorized = profile.get("authorized_representative") or "未自动识别"
         phone = profile.get("phone") or "未自动识别"
         address = profile.get("address") or "未自动识别"
-        points.append(f"{profile['full_name']}法定代表人识别为 `{legal}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。")
+        credit_code = profile.get("unified_social_credit_code") or "未自动识别"
+        points.append(
+            f"{profile['full_name']}法定代表人识别为 `{legal}`，授权代表识别为 `{authorized}`，"
+            f"统一社会信用代码识别为 `{credit_code}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。"
+        )
     return points or ["当前未形成可用于身份信息比对的有效结果。"]
 
 

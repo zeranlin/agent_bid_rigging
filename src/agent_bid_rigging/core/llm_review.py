@@ -112,6 +112,8 @@ def _format_supplier_fact_summary(supplier: dict) -> str:
         f"公司={primary('company_names') or supplier.get('supplier')}, "
         f"报价={primary('bid_amounts') or '未识别'}, "
         f"法代={primary('legal_representatives') or '未识别'}, "
+        f"授权代表={primary('authorized_representatives') or '未识别'}, "
+        f"统一社会信用代码={primary('unified_social_credit_codes') or '未识别'}, "
         f"电话={primary('phones') or '未识别'}, "
         f"地址={primary('addresses') or '未识别'}, "
         f"许可证号={primary('license_numbers') or '未识别'}, "
