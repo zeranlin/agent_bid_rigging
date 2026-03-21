@@ -298,7 +298,7 @@ RUN_TEMPLATE = """<!doctype html>
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
     h1, h2, h3 { margin: 0 0 12px; }
     .muted { color: var(--muted); }
-    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .meta div { padding: 12px; border-radius: 12px; background: #faf5ee; border: 1px solid var(--line); }
     .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
     .dimension-summary {
@@ -576,7 +576,6 @@ RUN_TEMPLATE = """<!doctype html>
         <div><strong>当前状态</strong><br><span class="state-{{ status.state }}">{{ status.state }}</span></div>
         <div><strong>审查模式</strong><br>{{ mode_label }}</div>
         <div><strong>生成时间</strong><br>{{ status.generated_at or job.generated_at or '-' }}</div>
-        <div><strong>输出目录</strong><br>{{ run_dir }}</div>
       </div>
     </section>
     <section class="panel">
@@ -735,7 +734,6 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         return render_template_string(
             RUN_TEMPLATE,
             run_id=run_id,
-            run_dir=str(run_dir),
             job=job,
             status=status,
             mode_label=_review_mode_label(job.get("review_mode")),
@@ -1054,11 +1052,19 @@ def _render_markdown(text: str) -> str:
 
 
 def _postprocess_report_html(html: str) -> str:
-    pattern = re.compile(
-        r"<p>审查人：(?P<reviewer>[^<]+)</p>\s*<p>审查日期：(?P<date>[^<]+)</p>\s*$",
-        flags=re.S,
-    )
-    return pattern.sub(
-        r'<div class="report-signoff"><p>审查人：\g<reviewer></p><p>审查日期：\g<date></p></div>',
-        html,
-    )
+    patterns = [
+        re.compile(
+            r"<p>审查人：(?P<reviewer>[^<]+)</p>\s*<p>审查日期：(?P<date>[^<]+)</p>\s*$",
+            flags=re.S,
+        ),
+        re.compile(
+            r"<p>审查人：(?P<reviewer>[^<]+)<br\s*/?>\s*审查日期：(?P<date>[^<]+)</p>\s*$",
+            flags=re.S,
+        ),
+    ]
+    replacement = r'<div class="report-signoff"><p>审查人：\g<reviewer></p><p>审查日期：\g<date></p></div>'
+    for pattern in patterns:
+        updated = pattern.sub(replacement, html)
+        if updated != html:
+            return updated
+    return html
