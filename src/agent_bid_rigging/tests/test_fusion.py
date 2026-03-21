@@ -56,6 +56,9 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
                 "legal_representative": "张三",
                 "authorized_representative": "李四",
                 "unified_social_credit_code": "91150100MA0EXAMPLE",
+                "authorized_manufacturer": "测试厂家",
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
                 "address": "示例地址",
                 "phone": "13800000000",
                 "manufacturer": "测试厂家",
@@ -78,6 +81,9 @@ def test_append_ocr_rows_updates_artifact_tables() -> None:
         for row in entity_rows
     )
     assert authorization_rows[0]["manufacturer_mentions"] == ["测试厂家"]
+    assert authorization_rows[0]["authorized_manufacturers"] == ["测试厂家"]
+    assert authorization_rows[0]["authorization_issuers"] == ["测试厂家股份有限公司"]
+    assert authorization_rows[0]["authorization_dates"] == ["2023-12-19"]
     assert authorization_rows[0]["authorization_mentions"]
     assert "LIC-001" in license_rows[0]["registration_ids"]
     assert "REG-001" in license_rows[0]["registration_ids"]
@@ -137,6 +143,9 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
                 "legal_representative": "张三",
                 "authorized_representative": "李四",
                 "unified_social_credit_code": "91150105MA0ABCDE1X",
+                "authorized_manufacturer": "测试厂家",
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
                 "phone": "13800000000",
                 "license_number": "LIC-001",
             },
@@ -151,5 +160,8 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].license_numbers[0].value == "LIC-001"
     assert review_facts.suppliers[0].authorized_representatives[0].value == "李四"
     assert review_facts.suppliers[0].unified_social_credit_codes[0].value == "91150105MA0ABCDE1X"
+    assert review_facts.suppliers[0].authorized_manufacturers[0].value == "测试厂家"
+    assert review_facts.suppliers[0].authorization_issuers[0].value == "测试厂家股份有限公司"
+    assert review_facts.suppliers[0].authorization_dates[0].value == "2023-12-19"
     assert review_facts.suppliers[0].company_names[0].is_primary is True
     assert review_facts.suppliers[0].company_names[0].value == "内蒙古阿尔法科技有限公司"

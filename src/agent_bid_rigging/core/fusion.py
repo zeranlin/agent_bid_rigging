@@ -230,6 +230,9 @@ def append_ocr_entity_rows(entity_field_table: list[dict], ocr_rows: list[dict])
         "authorized_representative": "authorized_representatives",
         "unified_social_credit_code": "unified_social_credit_codes",
         "social_credit_code": "unified_social_credit_codes",
+        "authorized_manufacturer": "authorized_manufacturers",
+        "authorization_issuer": "authorization_issuers",
+        "authorization_date": "authorization_dates",
         "bid_total_amount": "bid_amounts",
         "address": "addresses",
         "phone": "phones",
@@ -267,16 +270,36 @@ def append_ocr_authorization_rows(authorization_chain_table: list[dict], ocr_row
         table_row = by_supplier.get(supplier)
         if not table_row:
             continue
+        table_row.setdefault("manufacturer_mentions", [])
+        table_row.setdefault("authorized_manufacturers", [])
+        table_row.setdefault("authorization_issuers", [])
+        table_row.setdefault("authorization_dates", [])
+        table_row.setdefault("authorization_mentions", [])
         fields = row.get("fields") or {}
         manufacturer = normalize_text_field(fields.get("manufacturer"))
         if manufacturer and manufacturer not in table_row["manufacturer_mentions"]:
             table_row["manufacturer_mentions"].append(manufacturer)
+        authorized_manufacturer = normalize_text_field(fields.get("authorized_manufacturer") or fields.get("manufacturer"))
+        if authorized_manufacturer and authorized_manufacturer not in table_row["authorized_manufacturers"]:
+            table_row["authorized_manufacturers"].append(authorized_manufacturer)
+        authorization_issuer = normalize_text_field(fields.get("authorization_issuer"))
+        if authorization_issuer and authorization_issuer not in table_row["authorization_issuers"]:
+            table_row["authorization_issuers"].append(authorization_issuer)
+        authorization_date = _normalize_date_text(fields.get("authorization_date"))
+        if authorization_date and authorization_date not in table_row["authorization_dates"]:
+            table_row["authorization_dates"].append(authorization_date)
         if row.get("doc_type") == "authorization_letter":
             mention = compact_ocr_line(row)
             if mention and mention not in table_row["authorization_mentions"]:
                 table_row["authorization_mentions"].append(mention)
-        if table_row["authorization_mentions"]:
-            table_row["summary"] = "发现授权/厂家关键词"
+        if (
+            table_row["authorization_mentions"]
+            or table_row["manufacturer_mentions"]
+            or table_row["authorized_manufacturers"]
+            or table_row["authorization_issuers"]
+            or table_row["authorization_dates"]
+        ):
+            table_row["summary"] = "发现授权链关键信息"
 
 
 def append_ocr_license_rows(license_match_table: list[dict], ocr_rows: list[dict]) -> None:
@@ -358,7 +381,11 @@ def _build_supplier_facts(
         authorized_representatives=[],
         addresses=_build_text_observations(signal.addresses, signal.document.path),
         bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
+        pricing_rows=[],
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
+        authorized_manufacturers=[],
+        authorization_issuers=[],
+        authorization_dates=[],
         section_rows=[dict(row) for row in supplier_section_rows],
         table_rows=[dict(row) for row in supplier_table_rows],
     )
@@ -373,6 +400,17 @@ def _build_supplier_facts(
                 confidence=row.get("confidence"),
                 source_type="table",
                 prefer_primary=not facts.bid_amounts,
+            )
+        if row.get("field_name") == "pricing_row":
+            facts.pricing_rows.append(
+                {
+                    "value": normalize_text_field(row.get("value")),
+                    "source_document": row.get("source_path") or signal.document.path,
+                    "source_page": row.get("source_page"),
+                    "source_section": row.get("source_section"),
+                    "confidence": row.get("confidence"),
+                    "snippet": row.get("snippet"),
+                }
             )
 
     _augment_supplier_profile_observations(facts)
@@ -438,6 +476,30 @@ def _build_supplier_facts(
             source_page,
             confidence,
             prefer_primary=not facts.manufacturers,
+        )
+        _append_observation(
+            facts.authorized_manufacturers,
+            normalize_text_field(fields.get("authorized_manufacturer") or fields.get("manufacturer")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorized_manufacturers and row.get("doc_type") == "authorization_letter",
+        )
+        _append_observation(
+            facts.authorization_issuers,
+            normalize_text_field(fields.get("authorization_issuer")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorization_issuers,
+        )
+        _append_observation(
+            facts.authorization_dates,
+            _normalize_date_text(fields.get("authorization_date")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorization_dates,
         )
         _append_observation(
             facts.brands,
@@ -597,6 +659,39 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
             source_document=source_document,
             source_page=source_page,
             confidence=0.88,
+            source_type="section",
+        )
+
+    authorization_manufacturer = _extract_authorized_manufacturer_from_profile_text(profile_text)
+    if authorization_manufacturer:
+        _promote_primary_observation(
+            facts.authorized_manufacturers,
+            authorization_manufacturer,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.84,
+            source_type="section",
+        )
+
+    authorization_issuer = _extract_authorization_issuer_from_profile_text(profile_text)
+    if authorization_issuer:
+        _promote_primary_observation(
+            facts.authorization_issuers,
+            authorization_issuer,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.83,
+            source_type="section",
+        )
+
+    authorization_date = _extract_authorization_date_from_profile_text(profile_text)
+    if authorization_date:
+        _promote_primary_observation(
+            facts.authorization_dates,
+            authorization_date,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.82,
             source_type="section",
         )
 
@@ -821,6 +916,44 @@ def _extract_phone_from_profile_text(text: str) -> str | None:
     return None
 
 
+def _extract_authorized_manufacturer_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:授权厂家|厂家名称|制造商|生产厂家)\s*[:：]\s*([^\n]{2,80})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _clean_company_like_value(match.group(1))
+            if value:
+                return value
+    return None
+
+
+def _extract_authorization_issuer_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"([A-Za-z（）()·\u4e00-\u9fff]{4,}(?:有限责任公司|股份有限公司|有限公司|公司))\s*(?:现|特)?授权",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _clean_company_like_value(match.group(1))
+            if value:
+                return value
+    return None
+
+
+def _extract_authorization_date_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)",
+        r"(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _normalize_date_text(match.group(1))
+    return None
+
+
 def _extract_unified_social_credit_code_from_profile_text(text: str) -> str | None:
     patterns = (
         r"(?:统一社会信用代码|社会信用代码|信用代码)\s*[:：]?\s*([0-9A-Z]{18})",
@@ -914,3 +1047,12 @@ def _looks_like_credit_code(value: str) -> bool:
 def _normalize_credit_code(value: object) -> str:
     normalized = normalize_text_field(value).upper().replace(" ", "")
     return normalized if _looks_like_credit_code(normalized) else ""
+
+
+def _normalize_date_text(value: object) -> str:
+    normalized = normalize_text_field(value)
+    if not normalized:
+        return ""
+    normalized = re.sub(r"\s+", "", normalized)
+    normalized = normalized.replace("/", "-").replace(".", "-")
+    return normalized

@@ -1293,15 +1293,21 @@ def build_authorization_chain_table(signals: ReviewFacts | list[ExtractedSignals
     if supplier_facts is not None:
         for supplier in supplier_facts:
             manufacturer_mentions = _observation_values(supplier, "manufacturers")
+            authorized_manufacturers = _observation_values(supplier, "authorized_manufacturers")
+            authorization_issuers = _observation_values(supplier, "authorization_issuers")
+            authorization_dates = _observation_values(supplier, "authorization_dates")
             authorization_mentions = _observation_values(supplier, "authorization_mentions")[:20]
             rows.append(
                 {
                     "supplier": supplier.supplier,
                     "manufacturer_mentions": manufacturer_mentions,
+                    "authorized_manufacturers": authorized_manufacturers,
+                    "authorization_issuers": authorization_issuers,
+                    "authorization_dates": authorization_dates,
                     "authorization_mentions": authorization_mentions,
                     "summary": (
-                        "发现授权/厂家关键词"
-                        if authorization_mentions or manufacturer_mentions
+                        "发现授权链关键信息"
+                        if authorization_mentions or manufacturer_mentions or authorized_manufacturers or authorization_issuers or authorization_dates
                         else "未发现明确授权链线索"
                     ),
                 }

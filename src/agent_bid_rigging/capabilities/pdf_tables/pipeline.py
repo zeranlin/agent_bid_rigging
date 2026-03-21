@@ -55,6 +55,7 @@ def build_pdf_table_response(source: Path, *, output_dir: Path, sections: list[P
         row = _extract_bid_total_amount(section)
         if row:
             rows.append(row)
+        rows.extend(_extract_pricing_rows(section))
     if not rows:
         warnings.append("No quotation/opening table values were extracted from section text.")
     return PdfTableResponse(
@@ -84,6 +85,61 @@ def _extract_bid_total_amount(section: PdfSection) -> PdfTableRow | None:
     )
 
 
+def _extract_pricing_rows(section: PdfSection) -> list[PdfTableRow]:
+    rows: list[PdfTableRow] = []
+    seen: set[tuple[str, str]] = set()
+    text = section.text
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    for line in lines[:120]:
+        label = _extract_pricing_label_from_line(line)
+        amount = _extract_first_amount(line)
+        if not label or not amount or _looks_like_total_label(label):
+            continue
+        key = (label, amount)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            PdfTableRow(
+                table_type="quotation",
+                field_name="pricing_row",
+                value=f"{label}={amount}",
+                source_section=section.title,
+                source_page=section.start_page,
+                confidence=0.82,
+                snippet=line[:180],
+            )
+        )
+
+    compact = re.sub(r"\s+", "", text)
+    for match in re.finditer(
+        r"(成品软件|定制开发|系统实施报价|实施服务|运维服务|标准产品报价|服务总价).*?[¥￥]\s*([0-9][0-9,]*(?:\.\d+)?)",
+        compact,
+    ):
+        label = match.group(1)
+        amount = _normalize_amount(match.group(2))
+        if not amount or _looks_like_total_label(label):
+            continue
+        key = (label, amount)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            PdfTableRow(
+                table_type="quotation",
+                field_name="pricing_row",
+                value=f"{label}={amount}",
+                source_section=section.title,
+                source_page=section.start_page,
+                confidence=0.78,
+                snippet=section.snippet[:180],
+            )
+        )
+
+    return rows
+
+
 def _normalize_amount(value: str) -> str | None:
     try:
         amount = float(value.replace(",", ""))
@@ -92,6 +148,28 @@ def _normalize_amount(value: str) -> str | None:
     if amount < 1:
         return None
     return f"{amount:.2f}"
+
+
+def _extract_first_amount(text: str) -> str | None:
+    match = re.search(r"[¥￥]?\s*([0-9][0-9,]*(?:\.\d+)?)", text)
+    if not match:
+        return None
+    return _normalize_amount(match.group(1))
+
+
+def _extract_pricing_label_from_line(line: str) -> str | None:
+    match = re.match(r"(.{1,20}?)(?:[¥￥]|[0-9])", line)
+    if not match:
+        return None
+    label = re.sub(r"[：:（(].*$", "", match.group(1)).strip()
+    label = re.sub(r"\s+", "", label)
+    if len(label) < 2:
+        return None
+    return label
+
+
+def _looks_like_total_label(label: str) -> bool:
+    return any(token in label for token in ("总报价", "合计", "项目报价", "报价总计", "投标总价"))
 
 
 def _extract_prioritized_amounts(lines: list[str], text: str) -> list[str]:

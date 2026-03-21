@@ -41,6 +41,8 @@ def test_pdf_tables_extract_bid_total_amount_from_bidder_a_quote_sheet(tmp_path:
     amount_row = next(row for row in table_response.rows if row.field_name == "bid_total_amount")
     assert amount_row.value == "1.00"
     assert amount_row.source_section in {"5.2. 报价单", "报价单"}
+    pricing_rows = [row for row in table_response.rows if row.field_name == "pricing_row"]
+    assert any("系统实施报价=1.00" == row.value for row in pricing_rows)
 
 
 def test_pdf_tables_prefer_total_amount_over_item_amounts_for_bidder_b(tmp_path: Path) -> None:
@@ -52,6 +54,8 @@ def test_pdf_tables_prefer_total_amount_over_item_amounts_for_bidder_b(tmp_path:
 
     amount_row = next(row for row in table_response.rows if row.field_name == "bid_total_amount")
     assert amount_row.value == "2000000.00"
+    pricing_rows = [row for row in table_response.rows if row.field_name == "pricing_row"]
+    assert any(row.value.startswith("成品软件=") for row in pricing_rows)
 
 
 def test_section_similarity_table_uses_long_pdf_sections(tmp_path: Path) -> None:
@@ -126,10 +130,12 @@ def test_review_facts_extract_long_pdf_profile_fields(tmp_path: Path) -> None:
     assert _primary_value(supplier_map["A"], "phones") == "*******8093"
     assert "长乐区" in (_primary_value(supplier_map["A"], "addresses") or "")
     assert _primary_value(supplier_map["A"], "bid_amounts") == "1.00"
+    assert any(row["value"].startswith("系统实施报价=") for row in supplier_map["A"].pricing_rows)
 
     assert _primary_value(supplier_map["B"], "company_names") == "投标人 B"
     assert _primary_value(supplier_map["B"], "legal_representatives") == "王淑云"
     assert _primary_value(supplier_map["B"], "bid_amounts") == "2000000.00"
+    assert any(row["value"].startswith("成品软件=") for row in supplier_map["B"].pricing_rows)
 
     assert _primary_value(supplier_map["C"], "company_names") == "投标人 C"
     assert _primary_value(supplier_map["C"], "phones") == "*******6767"
