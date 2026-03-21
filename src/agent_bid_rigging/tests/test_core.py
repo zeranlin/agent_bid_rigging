@@ -296,6 +296,14 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
                 "supplier_b": "beta",
                 "risk_score": 90,
                 "risk_level": "critical",
+                "dimension_summary": {
+                    "identity_link": {"matched": True, "score": 30, "tier": "strong", "finding_titles": ["联系人电话重合"]},
+                    "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                    "text_similarity": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                    "file_homology": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                    "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                    "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                },
                 "findings": [
                     {
                         "title": "联系人电话重合",
@@ -313,6 +321,7 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     assert "## 三、事实摘要" in opinion["document"]
     assert "## 五、排除性因素" in opinion["document"]
     assert "alpha 与 beta" in opinion["document"]
+    assert "维度判断：主体关联强" in opinion["document"]
 
 
 def test_normative_response_sections_do_not_trigger_text_overlap_finding() -> None:
@@ -400,9 +409,9 @@ def test_evidence_grading_and_formal_report() -> None:
 
 def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent() -> None:
     risk_rows = [
-        {"supplier_a": "恒禾", "supplier_b": "华康", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
-        {"supplier_a": "恒禾", "supplier_b": "唯美", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
-        {"supplier_a": "华康", "supplier_b": "唯美", "total_score": 0, "risk_level": "low", "technical_text_score": 0, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0},
+        {"supplier_a": "恒禾", "supplier_b": "华康", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0, "dimension_summary": {"identity_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "text_similarity": {"matched": True, "score": 30, "tier": "medium", "finding_titles": ["仅两家共享的非模板文本重合"]}, "file_homology": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}}},
+        {"supplier_a": "恒禾", "supplier_b": "唯美", "total_score": 30, "risk_level": "medium", "technical_text_score": 30, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0, "dimension_summary": {"identity_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "text_similarity": {"matched": True, "score": 30, "tier": "medium", "finding_titles": ["仅两家共享的非模板文本重合"]}, "file_homology": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}}},
+        {"supplier_a": "华康", "supplier_b": "唯美", "total_score": 0, "risk_level": "low", "technical_text_score": 0, "entity_link_score": 0, "pricing_score": 0, "file_homology_score": 0, "authorization_score": 0, "timeline_score": 0, "dimension_summary": {"identity_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "text_similarity": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "file_homology": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}, "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []}}},
     ]
     evidence_rows = [
         {
@@ -509,6 +518,9 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "附：文本重合证据附表" in markdown
     assert "恒禾.txt / 项目实施方案 / 第120行" in markdown
     assert "统一模板、行业常见写法或内部规范表述的可能" in markdown
+    assert "**围串标判断维度摘要**" in markdown
+    assert "文本与方案关联中" in markdown
+    assert "主体关联未命中" in markdown
 
 
 def test_risk_score_table_matches_pairwise_assessment() -> None:

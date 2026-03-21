@@ -23,6 +23,28 @@ DOCUMENT_CATEGORY_RULES = [
 ]
 AUTHORIZATION_PATTERNS = ("授权书", "授权期限", "授权产品", "厂家授权", "授权对象")
 LICENSE_PATTERNS = ("营业执照", "经营许可证", "注册证", "检验报告", "许可证")
+DIMENSION_LABELS = {
+    "identity_link": "主体关联",
+    "pricing_link": "报价关联",
+    "text_similarity": "文本与方案关联",
+    "file_homology": "结构同源",
+    "authorization_chain": "授权与资质链",
+    "timeline_trace": "时间与电子痕迹",
+}
+DIMENSION_ORDER = (
+    "identity_link",
+    "pricing_link",
+    "text_similarity",
+    "file_homology",
+    "authorization_chain",
+    "timeline_trace",
+)
+DIMENSION_TIER_LABELS = {
+    "strong": "强",
+    "medium": "中",
+    "weak": "弱",
+    "none": "未命中",
+}
 
 
 def _coerce_suppliers(payload: ReviewFacts | list[ExtractedSignals]) -> list[SupplierFacts] | None:
@@ -476,6 +498,7 @@ def build_formal_report(
     suspicious_points = _build_suspicious_points(risk_score_table, evidence_grade_table, supplier_name_map)
     exclusion_points = _build_exclusion_points(review_conclusion_table, risk_score_table, supplier_name_map)
     further_checks = _build_further_checks(top_pair, supplier_name_map)
+    dimension_summary_section = _build_dimension_summary_section(risk_score_table, supplier_name_map)
     evidence_summary = evidence_grade_table[:12]
     fact_table = [
         {"序号": index, "事实内容": item, "性质": "已识别事实"}
@@ -565,6 +588,11 @@ def build_formal_report(
                 "title": "文件生成特征及时间比对",
                 "points": _build_timeline_points(supplier_profiles),
                 "opinion": _build_timeline_opinion(supplier_profiles),
+            },
+            {
+                "title": "围串标判断维度摘要",
+                "points": dimension_summary_section["points"],
+                "opinion": dimension_summary_section["opinion"],
             },
         ],
         "review_findings": review_conclusion_table["verified_facts"],
@@ -897,6 +925,53 @@ def _build_suspicious_points(
                     f"{pair_label}存在需进一步复核的线索，当前属于{grade_text}（{top_evidence['evidence_grade']}级）。"
                 )
     return points
+
+
+def _build_dimension_summary_section(
+    risk_score_table: list[dict],
+    supplier_name_map: dict[str, str] | None = None,
+) -> dict:
+    if not risk_score_table:
+        return {
+            "points": ["当前未形成可供说明的维度化比对结果。"],
+            "opinion": "维度化判断信息不足，暂无法从主体关联、报价关联、结构同源等角度形成综合说明。",
+        }
+    points: list[str] = []
+    for row in risk_score_table:
+        pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
+        points.append(f"{pair_label}：{_render_dimension_summary_text(row.get('dimension_summary', {}))}。")
+    matched_pairs = [row for row in risk_score_table if _has_meaningful_dimension_hit(row.get("dimension_summary", {}))]
+    if not matched_pairs:
+        opinion = "现有比对结果中，各供应商组合在六个判断维度上均未形成足以单独抬高风险等级的明确命中。"
+    else:
+        pair_labels = "；".join(
+            _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
+            for row in matched_pairs[:3]
+        )
+        opinion = (
+            f"从六个判断维度看，{pair_labels}已出现部分维度命中，"
+            "应结合命中维度的强弱层级和具体证据继续复核，不能仅依据单一维度直接定性。"
+        )
+    return {"points": points, "opinion": opinion}
+
+
+def _render_dimension_summary_text(summary: dict[str, dict]) -> str:
+    if not summary:
+        return "主体关联、报价关联、文本与方案关联、结构同源、授权与资质链、时间与电子痕迹均未形成明确命中"
+    parts: list[str] = []
+    for key in DIMENSION_ORDER:
+        item = summary.get(key, {})
+        label = DIMENSION_LABELS[key]
+        tier = DIMENSION_TIER_LABELS.get(item.get("tier", "none"), "未命中")
+        parts.append(f"{label}{tier}")
+    return "；".join(parts)
+
+
+def _has_meaningful_dimension_hit(summary: dict[str, dict]) -> bool:
+    return any(
+        item.get("tier") in {"strong", "medium", "weak"} and item.get("matched")
+        for item in summary.values()
+    )
 
 
 def _build_text_overlap_appendix(

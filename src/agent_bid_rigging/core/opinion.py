@@ -4,6 +4,29 @@ from datetime import datetime
 
 from agent_bid_rigging.utils.openai_client import OpenAIResponsesClient
 
+DIMENSION_LABELS = {
+    "identity_link": "主体关联",
+    "pricing_link": "报价关联",
+    "text_similarity": "文本与方案关联",
+    "file_homology": "结构同源",
+    "authorization_chain": "授权与资质链",
+    "timeline_trace": "时间与电子痕迹",
+}
+DIMENSION_ORDER = (
+    "identity_link",
+    "pricing_link",
+    "text_similarity",
+    "file_homology",
+    "authorization_chain",
+    "timeline_trace",
+)
+DIMENSION_TIER_LABELS = {
+    "strong": "强",
+    "medium": "中",
+    "weak": "弱",
+    "none": "未命中",
+}
+
 
 def generate_review_opinion(report: dict, opinion_mode: str = "auto", llm_review_layers: dict | None = None) -> dict:
     selected_mode = opinion_mode
@@ -57,7 +80,7 @@ def _generate_template_opinion(report: dict) -> str:
     )
     formal_report = report.get("formal_report", {})
     basic_info = formal_report.get("project_basic_info", {})
-    risk_summary = formal_report.get("risk_summary", [])
+    risk_summary = formal_report.get("risk_summary") or _fallback_risk_summary(report.get("pairwise_assessments", []))
     evidence_summary = formal_report.get("evidence_summary", [])
     review_conclusion = report.get("review_conclusion_table", {})
     supplier_names = _supplier_display_names(formal_report, report)
@@ -137,6 +160,7 @@ def _build_llm_input(report: dict) -> str:
             f"- {item['supplier_a']} vs {item['supplier_b']}: "
             f"risk_level={item['risk_level']}, risk_score={item['risk_score']}"
         )
+        lines.append(f"  - 维度摘要: {_render_dimension_summary_text(item.get('dimension_summary', {}))}")
         if not item["findings"]:
             lines.append("  - 未发现明显异常信号")
             continue
@@ -258,7 +282,22 @@ def _format_risk_summary(risk_summary: list[dict]) -> str:
         lines.append(
             f"- {item['supplier_a']} 与 {item['supplier_b']}：当前已识别出{_risk_level_text(item['risk_level'])}，建议结合相关证据继续复核。"
         )
+        lines.append(f"  - 维度判断：{_render_dimension_summary_text(item.get('dimension_summary', {}))}。")
     return "\n".join(lines)
+
+
+def _fallback_risk_summary(pairwise_assessments: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for item in pairwise_assessments:
+        rows.append(
+            {
+                "supplier_a": item["supplier_a"],
+                "supplier_b": item["supplier_b"],
+                "risk_level": item["risk_level"],
+                "dimension_summary": item.get("dimension_summary", {}),
+            }
+        )
+    return rows
 
 
 def _format_evidence_summary(evidence_summary: list[dict]) -> str:
@@ -287,3 +326,15 @@ def _risk_level_text(level: str) -> str:
         "critical": "较强可疑线索",
     }
     return mapping.get(level, "可疑线索")
+
+
+def _render_dimension_summary_text(summary: dict[str, dict]) -> str:
+    if not summary:
+        return "主体关联、报价关联、文本与方案关联、结构同源、授权与资质链、时间与电子痕迹均未形成明确命中"
+    parts: list[str] = []
+    for key in DIMENSION_ORDER:
+        item = summary.get(key, {})
+        label = DIMENSION_LABELS[key]
+        tier = DIMENSION_TIER_LABELS.get(item.get("tier", "none"), "未命中")
+        parts.append(f"{label}{tier}")
+    return "；".join(parts)
