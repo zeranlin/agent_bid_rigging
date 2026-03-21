@@ -1,248 +1,248 @@
-# Bid-Rigging Decision Model
+# 围串标业务判断层要素模型
 
-## Purpose
+## 目的
 
-Define the business judgment model for one core question:
+本文件用于定义围串标审查中的核心业务判断模型，聚焦回答一个问题：
 
-**Do the bidder submissions contain enough suspicious signals to justify a bid-rigging concern between one or more supplier pairs?**
+**多家投标人之间，是否存在足以支持围串标怀疑的异常信号。**
 
-This document is upstream of `ReviewFacts`, `strategy`, OCR, and LLM usage. The system should first define what must be judged, then derive which facts are needed, and only then decide which capabilities to run.
+本文件位于 `ReviewFacts`、`strategy`、OCR、LLM 之上。系统应先明确“要判断什么”，再反推“需要哪些事实”，最后才决定“调用哪些能力”。
 
-## Design order
+## 设计顺序
 
-The design order for this repository should be:
+本仓库后续应遵循以下设计顺序：
 
-1. Decision model
-2. Unified facts model
-3. Review strategy
-4. Atomic capabilities
-5. Reporting
+1. 业务判断模型
+2. 统一事实模型
+3. 审查策略
+4. 原子能力
+5. 报告输出
 
-This means:
+这意味着：
 
-- `scoring` should be driven by explicit judgment dimensions.
-- `ReviewFacts` should only carry facts that serve those dimensions.
-- `strategy` should only request OCR/LLM/table extraction when those facts are missing or weak.
+- `scoring` 应由清晰的业务判断维度驱动。
+- `ReviewFacts` 只保留服务这些判断维度的事实。
+- `strategy` 只在事实缺失或证据不足时请求 OCR、LLM、表格抽取等能力。
 
-## Core judgment target
+## 核心判断目标
 
-The business layer does **not** try to directly prove a legal conclusion. It produces one of three review outcomes for each supplier pair:
+业务层并不直接给出法律意义上的最终定性，而是对每一组投标人输出以下三类判断之一：
 
 1. `no_clear_signal`
-   Current materials do not show sufficient suspicious signals.
+   当前材料未显示出足够明确的异常信号。
 2. `needs_follow_up`
-   Suspicious signals exist, but current evidence is insufficient and follow-up checks are required.
+   已存在可疑线索，但当前证据不足，需要继续补充核查。
 3. `priority_review`
-   Multiple strong signals exist and the pair should be treated as a priority target for further investigation.
+   已存在多项强异常信号，应列为重点复核对象。
 
-The system output is therefore:
+因此，系统输出的重点应是：
 
-- pair-level suspicion judgment
-- case-level summary of which supplier pairs are most suspicious
-- evidence-backed explanation of why
+- 供应商两两之间的可疑程度判断
+- 案件层面哪些供应商组合最值得重点关注
+- 每个判断背后的证据解释
 
-## Judgment dimensions
+## 判断维度
 
-The business layer should evaluate supplier pairs across six dimensions.
+围串标业务判断层建议固定为六个维度。
 
-### 1. Identity linkage
+### 1. 主体关联维度
 
-Question:
-Are the bidders directly or indirectly linked through core identity fields?
+问题：
+不同投标人之间，是否存在直接或间接的主体关联？
 
-Typical signals:
+典型信号：
 
-- same legal representative
-- same authorized representative
-- same phone number
-- same email
-- same bank account
-- same address
-- same unified social credit code
+- 法定代表人相同
+- 授权代表相同
+- 联系电话相同
+- 邮箱相同
+- 银行账户相同
+- 地址相同
+- 统一社会信用代码相同
 
-Interpretation:
+解释：
 
-- strongest dimension for direct linkage
-- should be weighted heavily
-- low tolerance for false positives
+- 这是最强的一类直接关联维度
+- 应当给予较高权重
+- 应尽量降低误报
 
-### 2. Pricing linkage
+### 2. 报价关联维度
 
-Question:
-Do the quoted prices suggest coordination rather than independent competition?
+问题：
+报价结果是否更像协同形成，而不是独立竞争形成？
 
-Typical signals:
+典型信号：
 
-- identical total bid amount
-- extremely close total bid amount
-- unusually similar itemized pricing structure
-- same pricing rounding pattern
-- same non-market pricing distribution across line items
+- 投标总报价完全一致
+- 投标总报价异常接近
+- 分项报价结构异常相似
+- 舍入规律一致
+- 分项报价分布不符合独立竞争特征
 
-Interpretation:
+解释：
 
-- important but not sufficient on its own
-- should always be read together with identity, file origin, or textual signals
+- 这是重要维度，但通常不能单独定性
+- 应与主体关联、文件同源、文本方案等其他维度联读
 
-### 3. Text and solution linkage
+### 3. 文本与方案关联维度
 
-Question:
-Do the bids share unusual text or solution content suggesting shared drafting?
+问题：
+不同投标文件之间，是否存在异常相似的文本或方案内容？
 
-Typical signals:
+典型信号：
 
-- rare shared wording
-- shared uncommon errors
-- same custom narrative structures
-- same technical solution sections
-- same implementation or training content after template filtering
+- 罕见措辞重合
+- 共同错误
+- 相同的自定义叙述结构
+- 技术方案章节明显相似
+- 实施方案或培训方案在去模板后仍高度相似
 
-Interpretation:
+解释：
 
-- high false-positive risk without denoising
-- must strongly downweight:
-  - standard bidding templates
-  - platform workflow descriptions
-  - common service/training promises
-  - normative response sections
+- 这一维度天然误报风险较高
+- 必须强力降权以下内容：
+  - 标准投标模板
+  - 平台流程说明
+  - 通用售后/培训承诺
+  - 规范性响应章节
 
-### 4. Structural and document-origin linkage
+### 4. 结构同源维度
 
-Question:
-Do the submission structures suggest common preparation or document reuse?
+问题：
+不同投标文件的结构是否显示出共同制作或复用痕迹？
 
-Typical signals:
+典型信号：
 
-- same chapter order
-- same missing sections
-- same file/component structure
-- same file naming patterns
-- same table layout style
-- same editable document fingerprints
+- 章节顺序相同
+- 缺失章节相同
+- 文件/组件结构相似
+- 文件命名风格相似
+- 表格布局风格相似
+- 可编辑文件指纹相似
 
-Interpretation:
+解释：
 
-- useful supporting dimension
-- especially important in multi-file bid packages
-- in long-PDF scenarios, chapter-level structure is more important than file-tree similarity
+- 这是重要的辅助维度
+- 在多文件投标包场景下尤其重要
+- 在长 PDF 场景下，应更重视章节结构相似，而不是文件树相似
 
-### 5. Authorization and qualification-chain linkage
+### 5. 授权与资质链维度
 
-Question:
-Do the bidders rely on overlapping or suspicious authorization/qualification material?
+问题：
+不同投标人之间，是否共享异常重叠的授权或资质材料？
 
-Typical signals:
+典型信号：
 
-- same manufacturer authorization chain
-- same registration certificate numbers
-- same license numbers
-- overlapping authorization dates
-- same qualification material reused across bidders
+- 厂家授权链相同
+- 注册证号相同
+- 许可证号相同
+- 授权时间重叠异常
+- 资质材料疑似复用
 
-Interpretation:
+解释：
 
-- medium-to-high value when stable identifiers are present
-- requires careful source tracking
+- 当能拿到稳定标识时，这一维度价值较高
+- 需要较好的来源定位能力
 
-### 6. Time and electronic-trace linkage
+### 6. 时间与电子痕迹维度
 
-Question:
-Do the electronic traces suggest common preparation, same device, or coordinated submission timing?
+问题：
+电子痕迹是否显示出共同准备、同设备生成或协同投标特征？
 
-Typical signals:
+典型信号：
 
-- same or clustered creation/modification times
-- same CA certificate operator
-- same upload terminal or IP
-- same document fingerprints
-- same page/image generation traits
+- 创建/修改时间相同或高度集中
+- CA 证书使用人相同
+- 上传终端或 IP 相同
+- 文档指纹相同
+- 页级或图片生成特征相似
 
-Interpretation:
+解释：
 
-- very high value when trustworthy metadata exists
-- often unavailable in current materials, so the system must tolerate partial absence
+- 这是高价值维度
+- 但现实中往往材料不全，因此系统要允许缺失，不应强行补推断
 
-## Required fact families
+## 所需事实族
 
-The judgment layer implies the minimum fact families that `ReviewFacts` must carry.
+业务判断层反推出 `ReviewFacts` 至少应包含以下事实族。
 
-### Supplier identity facts
+### 主体事实
 
-- company name
-- legal representative
-- authorized representative
-- phone
-- email
-- address
-- bank account
-- unified social credit code
+- 企业名称
+- 法定代表人
+- 授权代表
+- 电话
+- 邮箱
+- 地址
+- 银行账户
+- 统一社会信用代码
 
-### Pricing facts
+### 报价事实
 
-- total bid amount
-- itemized pricing rows
-- pricing source section
-- pricing source page
+- 投标总报价
+- 分项报价
+- 报价来源章节
+- 报价来源页码
 
-### Text and section facts
+### 文本与章节事实
 
-- chapter/section titles
-- section family classification
-- rare overlap snippets
-- overlap source document and page
-- shared-error snippets
+- 章节标题
+- 章节家族分类
+- 罕见重合片段
+- 重合来源文件和页码
+- 共同错误片段
 
-### Structure facts
+### 结构事实
 
-- section catalog
-- section order
-- component list
-- file fingerprints
+- 章节目录
+- 章节顺序
+- 文件/组件清单
+- 文件指纹
 
-### Authorization and qualification facts
+### 授权与资质事实
 
-- manufacturer
-- authorization issuer
-- authorization date
-- registration number
-- license number
+- 制造商
+- 授权方
+- 授权时间
+- 注册证号
+- 许可证号
 
-### Time and trace facts
+### 时间与电子痕迹事实
 
-- created/modified timestamps
-- upload timing
-- certificate/operator clues
-- file hash or fingerprint
+- 创建/修改时间
+- 上传时间
+- 证书/操作人线索
+- 哈希或文件指纹
 
-## Fact quality rules
+## 事实质量规则
 
-The decision layer should consume facts using these rules:
+业务判断层消费事实时，应遵循以下原则：
 
-1. Prefer stable identifiers over narrative similarity.
-2. Prefer sourced facts over inferred facts.
-3. Prefer primary values over candidate values.
-4. Treat missing facts as `unknown`, not as `negative`.
-5. Do not upgrade pair suspicion from text overlap alone unless the text is rare and non-normative.
+1. 稳定标识优先于叙述相似。
+2. 有来源定位的事实优先于纯推断事实。
+3. 主采纳值优先于候选值。
+4. 缺失应视为 `unknown`，而不是 `negative`。
+5. 文本相似不能单独升级结论，除非该文本明确罕见且非规范性。
 
-## Dimension weighting guidance
+## 维度权重指导
 
-This is not a fixed numeric scoring table, but it defines the intended priority.
+这不是最终固定分值表，而是业务层优先级指导。
 
-- Highest priority:
-  - identity linkage
-  - time/electronic trace linkage
-- High priority:
-  - pricing linkage
-  - authorization/qualification linkage
-- Medium priority:
-  - structural linkage
-- Conditional priority:
-  - text and solution linkage
-    only after strong template and normative filtering
+- 最高优先级：
+  - 主体关联
+  - 时间与电子痕迹
+- 高优先级：
+  - 报价关联
+  - 授权与资质链
+- 中优先级：
+  - 结构同源
+- 条件优先级：
+  - 文本与方案关联
+    仅在完成强模板过滤和规范性降权后才应提升权重
 
-## Output contract for scoring
+## 评分输出契约
 
-The scoring layer should produce, per supplier pair:
+`scoring` 对每一组供应商至少应输出：
 
 - `judgment`
   - `no_clear_signal`
@@ -251,63 +251,63 @@ The scoring layer should produce, per supplier pair:
 - `risk_level`
   - low / medium / high / critical
 - `dimension_summary`
-  a per-dimension summary of which dimensions contributed
+  各判断维度的贡献摘要
 - `findings`
-  evidence-backed findings tied to specific dimensions
+  与具体维度绑定的证据项
 
-This makes scoring more than a flat score sum. It becomes a dimension-based judgment engine.
+这样 `scoring` 就不是简单分数累加，而是一个按维度组织的业务判断引擎。
 
-## Implications for ReviewFacts
+## 对 ReviewFacts 的约束
 
-`ReviewFacts` should not be a generic storage bucket. It should be a structured container for the fact families above, with:
+`ReviewFacts` 不应成为一个泛化的大字典，而应是服务上述六个判断维度的统一事实层，且每个事实至少应包含：
 
-- primary value
-- candidate values
-- source document
-- source page
-- source type
-- confidence
-- conflict markers when needed
+- 主采纳值
+- 候选值
+- 来源文件
+- 来源页码
+- 来源类型
+- 置信度
+- 必要时的冲突标记
 
-If a fact family does not support one of the six judgment dimensions, it should not be promoted into the core fact layer.
+如果某一类数据不能支撑六个判断维度之一，就不应提升为核心事实。
 
-## Implications for strategy
+## 对 strategy 的约束
 
-`strategy` should be driven by dimension gaps.
+`strategy` 应该由“维度缺口”驱动，而不是由固定文件名或固定能力配置驱动。
 
-Examples:
+例如：
 
-- If pricing facts are weak, trigger quotation-table extraction or OCR for pricing pages.
-- If identity facts are weak, target business-license/basic-profile/authorization sections.
-- If text evidence is the only suspicious signal, avoid over-escalation and prefer low-cost follow-up checks.
-- If strong identity or timing linkage already exists, escalate to deeper review and richer reporting.
+- 如果报价事实薄弱，则触发报价表抽取或报价页 OCR。
+- 如果主体事实薄弱，则优先补营业执照、基本情况表、法代证明、授权章节。
+- 如果当前只有文本相似线索，而没有主体、报价、时间等支撑，则应避免过度升级。
+- 如果已经出现强主体关联或强时间痕迹，则可以升级到更深的复核和更完整的报告。
 
-So strategy should answer:
+所以 `strategy` 应回答：
 
-- which judgment dimensions are currently under-supported
-- which capability can best fill that gap
-- whether the expected value justifies OCR/LLM cost
+- 哪个判断维度当前证据不足
+- 哪种能力最适合补这个缺口
+- 该能力的调用成本是否值得
 
-## Implications for long-PDF support
+## 对长 PDF 场景的含义
 
-For long-PDF bids, the decision model implies:
+在长 PDF 场景下，这个模型意味着：
 
-- chapter-aware facts are first-class
-- quotation extraction must be section-aware
-- technical/implementation/training comparison must be chapter-aware
-- OCR should be a supplement for scanned pages, not the default entry path
+- 章节事实必须是一等公民
+- 报价抽取必须基于章节定位
+- 技术方案/实施方案/培训方案比较必须按章节进行
+- OCR 应作为扫描页补漏手段，而不是默认主入口
 
-## Non-goals
+## 非目标
 
-This model does not:
+本模型不负责：
 
-- make a final legal determination
-- replace human review
-- assume every suspicious signal is equally meaningful
-- require every dimension to be present in every case
+- 给出最终法律定性
+- 代替人工复核
+- 假设所有异常信号具有相同意义
+- 要求每个案件都具备全部六个维度的完整证据
 
-## Current conclusion
+## 当前结论
 
-For the current repository, the next architectural rule should be:
+对当前仓库的后续约束可以总结为一句话：
 
-**Business judgment dimensions define the fact model. The fact model defines strategy. Strategy defines capability execution.**
+**先定义业务判断维度，再定义事实层；先有事实层，再决定策略层；最后再调度 OCR、表格、LLM 等能力。**
