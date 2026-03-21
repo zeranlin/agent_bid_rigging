@@ -385,22 +385,19 @@ RUN_TEMPLATE = """<!doctype html>
     .report-viewer {
       max-width: 900px;
       margin: 0 auto;
-      padding: 40px 54px 46px;
-      border-radius: 22px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.95), rgba(249,244,236,0.98));
-      border: 1px solid #e0d4c5;
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.72),
-        0 16px 34px rgba(87, 60, 30, 0.08);
-      line-height: 1.72;
-      font-size: 16px;
+      padding: 44px 58px 52px;
+      border-radius: 18px;
+      background: #ffffff;
+      border: 1px solid #d8cbb8;
+      box-shadow: 0 12px 24px rgba(69, 49, 23, 0.06);
+      line-height: 1.75;
+      font-size: 17px;
     }
     .report-viewer h1,
     .report-viewer h2,
     .report-viewer h3,
     .report-viewer h4 {
-      color: var(--accent);
+      color: #3b2a19;
       margin: 1.05em 0 0.45em;
       letter-spacing: 0.01em;
     }
@@ -408,23 +405,22 @@ RUN_TEMPLATE = """<!doctype html>
     .report-viewer h2:first-child,
     .report-viewer h3:first-child { margin-top: 0; }
     .report-viewer h1 {
-      font-size: 42px;
-      line-height: 1.2;
+      font-size: 52px;
+      line-height: 1.18;
       text-align: center;
-      margin-bottom: 1em;
-      padding-bottom: 0.45em;
-      border-bottom: 1px solid #eadbc8;
+      margin-bottom: 1.1em;
+      font-weight: 700;
     }
     .report-viewer h2 {
-      font-size: 24px;
+      font-size: 28px;
       margin-top: 1.35em;
     }
     .report-viewer h3 {
-      font-size: 19px;
+      font-size: 21px;
     }
     .report-viewer p {
-      margin: 0.3em 0 0.85em;
-      color: #27313a;
+      margin: 0.3em 0 0.82em;
+      color: #1f2730;
     }
     .report-viewer ul,
     .report-viewer ol {
@@ -440,9 +436,9 @@ RUN_TEMPLATE = """<!doctype html>
     }
     .report-viewer code {
       padding: 2px 6px;
-      border-radius: 8px;
-      background: #f3e8d9;
-      color: #5c3210;
+      border-radius: 6px;
+      background: #f4efe8;
+      color: #4b3420;
       font-size: 0.95em;
     }
     .report-viewer pre {
@@ -461,16 +457,16 @@ RUN_TEMPLATE = """<!doctype html>
     .report-viewer blockquote {
       margin: 0.8em 0;
       padding: 0.35em 1em;
-      border-left: 4px solid #d2b08d;
+      border-left: 4px solid #b99c79;
       color: #5a4b3d;
-      background: #fcf7f0;
+      background: #f8f5f1;
     }
     .report-viewer table {
       width: 100%;
       border-collapse: collapse;
       margin: 0.8em 0;
       font-size: 14px;
-      background: rgba(255,255,255,0.82);
+      background: #ffffff;
     }
     .report-viewer th,
     .report-viewer td {
@@ -486,10 +482,10 @@ RUN_TEMPLATE = """<!doctype html>
       margin-bottom: 14px;
     }
     .report-signoff {
-      margin-top: 2.8em;
+      margin-top: 3.2em;
       display: grid;
       justify-items: end;
-      color: #4d4034;
+      color: #3f3429;
       font-size: 15px;
     }
     .report-signoff p {
@@ -554,11 +550,11 @@ RUN_TEMPLATE = """<!doctype html>
       main { width: min(100vw - 24px, 1120px); }
       .meta, .links { grid-template-columns: 1fr; }
       .report-viewer {
-        padding: 24px 22px 28px;
+        padding: 28px 22px 32px;
         font-size: 15px;
       }
       .report-viewer h1 {
-        font-size: 30px;
+        font-size: 38px;
       }
     }
   </style>
