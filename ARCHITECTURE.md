@@ -38,21 +38,29 @@ We mirror that pattern in a domain-specific review loop.
 - invokes parsing, extraction, scoring, and report generation
 - writes manifests and summaries
 
-### 3. Parsing layer
+### 3. Ingestion and parsing layer
 
 - plain text loader for `.txt`, `.md`, `.json`
 - OOXML text extraction for `.docx`
 - `pdftotext` backend for `.pdf` when available, with `pypdf` fallback
 - recursive directory and zip archive ingestion for real procurement submission packages
 
-### 4. Domain analysis layer
+### 4. Capabilities layer
+
+- OCR and scanned-page text extraction
+- image understanding and page description
+- table extraction and normalization
+- file metadata and signature extraction
+- reusable atomic outputs that can serve multiple business workflows
+
+### 5. Domain analysis layer
 
 - entity extraction from procurement documents
 - pricing signal extraction
 - rare-line and overlap detection
 - tender-template filtering
 
-### 5. Evidence and reporting layer
+### 6. Evidence and reporting layer
 
 - normalized per-document JSON
 - pairwise comparison report
@@ -66,6 +74,7 @@ We mirror that pattern in a domain-specific review loop.
 - Graceful LLM augmentation: opinion drafting can use an LLM, but evidence extraction and scoring do not depend on one.
 - Agent-readable artifacts: outputs must be easy for a later agent run to resume from.
 - Extensible backends: document parsing and scoring rules are isolated modules.
+- Separate atomic capabilities from business judgment so future tools do not accumulate inside `core/`.
 
 ## Future extensions
 

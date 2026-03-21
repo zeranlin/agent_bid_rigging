@@ -21,6 +21,7 @@ This repository is designed for agent-first execution. Treat this file as a map,
 ## Key code paths
 
 - `src/agent_bid_rigging/cli.py`: CLI entry point and REPL
+- `src/agent_bid_rigging/capabilities/`: reusable atomic abilities such as OCR and metadata extraction
 - `src/agent_bid_rigging/core/runner.py`: end-to-end run orchestration
 - `src/agent_bid_rigging/core/extractor.py`: signal extraction
 - `src/agent_bid_rigging/core/opinion.py`: review opinion generation
