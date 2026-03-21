@@ -102,9 +102,6 @@ def run_review(
         bid_signals.append(signals)
         _write_json(normalized_dir / f"{supplier_name}.json", signals.to_dict())
 
-    assessments = assess_pairs(bid_signals)
-    assessment_dicts = [assessment.to_dict() for assessment in assessments]
-
     case_manifest = build_case_manifest(
         run_name=run_name,
         generated_at=generated_at,
@@ -121,6 +118,8 @@ def run_review(
     shared_error_table = build_shared_error_table(bid_signals)
     renumber_ocr_rows(image_index_rows, image_ocr_rows)
     review_facts = build_review_facts(tender_doc, bid_signals, image_index_rows, image_ocr_rows)
+    assessments = assess_pairs(review_facts)
+    assessment_dicts = [assessment.to_dict() for assessment in assessments]
     extracted_file_index = build_extracted_file_index(review_facts)
     document_catalog = build_document_catalog(review_facts)
     entity_field_table = build_entity_field_table(review_facts)

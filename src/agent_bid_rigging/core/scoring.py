@@ -3,38 +3,39 @@ from __future__ import annotations
 from collections import Counter
 from itertools import combinations
 
-from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding
+from agent_bid_rigging.models import ExtractedSignals, PairwiseAssessment, PairwiseFinding, ReviewFacts, SupplierFacts
 
 
-def assess_pairs(signals: list[ExtractedSignals]) -> list[PairwiseAssessment]:
+def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[PairwiseAssessment]:
+    suppliers = _coerce_suppliers(signals)
     global_line_counts: Counter[str] = Counter()
-    for item in signals:
-        global_line_counts.update(set(item.candidate_overlap_lines))
+    for item in suppliers:
+        global_line_counts.update(set(_candidate_overlap_lines(item)))
 
     assessments: list[PairwiseAssessment] = []
-    for left, right in combinations(signals, 2):
+    for left, right in combinations(suppliers, 2):
         findings: list[PairwiseFinding] = []
 
-        findings.extend(_shared_field_findings("联系人电话重合", 30, left.phones, right.phones))
-        findings.extend(_shared_field_findings("邮箱重合", 25, left.emails, right.emails))
-        findings.extend(_shared_field_findings("银行账号重合", 35, left.bank_accounts, right.bank_accounts))
+        findings.extend(_shared_field_findings("联系人电话重合", 30, _phones(left), _phones(right)))
+        findings.extend(_shared_field_findings("邮箱重合", 25, _emails(left), _emails(right)))
+        findings.extend(_shared_field_findings("银行账号重合", 35, _bank_accounts(left), _bank_accounts(right)))
         findings.extend(
             _shared_field_findings(
                 "法定代表人信息重合",
                 25,
-                left.legal_representatives,
-                right.legal_representatives,
+                _legal_representatives(left),
+                _legal_representatives(right),
             )
         )
-        findings.extend(_shared_field_findings("地址信息重合", 20, left.addresses, right.addresses))
+        findings.extend(_shared_field_findings("地址信息重合", 20, _addresses(left), _addresses(right)))
         findings.extend(_price_findings(left, right))
         findings.extend(_pair_only_line_findings(left, right, global_line_counts))
 
         score = sum(finding.weight for finding in findings)
         assessments.append(
             PairwiseAssessment(
-                supplier_a=left.document.name,
-                supplier_b=right.document.name,
+                supplier_a=_supplier_name(left),
+                supplier_b=_supplier_name(right),
                 risk_score=score,
                 risk_level=_risk_level(score),
                 findings=sorted(findings, key=lambda item: item.weight, reverse=True),
@@ -61,13 +62,15 @@ def _shared_field_findings(
     ]
 
 
-def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[PairwiseFinding]:
-    if not left.bid_amounts or not right.bid_amounts:
+def _price_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
+    left_prices = _bid_amounts(left)
+    right_prices = _bid_amounts(right)
+    if not left_prices or not right_prices:
         return []
 
     findings: list[PairwiseFinding] = []
-    left_total = max(left.bid_amounts)
-    right_total = max(right.bid_amounts)
+    left_total = max(left_prices)
+    right_total = max(right_prices)
     diff = abs(left_total - right_total)
     base = max(abs(left_total), abs(right_total), 1.0)
     ratio = diff / base
@@ -77,7 +80,7 @@ def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[Pai
             PairwiseFinding(
                 title="投标报价完全一致",
                 weight=35,
-                evidence=[f"{left.document.name} 与 {right.document.name} 报价均为 {left_total:.2f}"],
+                evidence=[f"{_supplier_name(left)} 与 {_supplier_name(right)} 报价均为 {left_total:.2f}"],
             )
         )
     elif ratio <= 0.001:
@@ -100,13 +103,13 @@ def _price_findings(left: ExtractedSignals, right: ExtractedSignals) -> list[Pai
 
 
 def _pair_only_line_findings(
-    left: ExtractedSignals,
-    right: ExtractedSignals,
+    left: ExtractedSignals | SupplierFacts,
+    right: ExtractedSignals | SupplierFacts,
     global_line_counts: Counter[str],
 ) -> list[PairwiseFinding]:
     overlap = sorted(
         line
-        for line in (set(left.candidate_overlap_lines) & set(right.candidate_overlap_lines))
+        for line in (set(_candidate_overlap_lines(left)) & set(_candidate_overlap_lines(right)))
         if global_line_counts[line] == 2
     )
     if not overlap:
@@ -136,3 +139,63 @@ def _risk_level(score: int) -> str:
     if score >= 20:
         return "medium"
     return "low"
+
+
+def _coerce_suppliers(signals: ReviewFacts | list[ExtractedSignals]) -> list[ExtractedSignals | SupplierFacts]:
+    if isinstance(signals, ReviewFacts):
+        return list(signals.suppliers)
+    return list(signals)
+
+
+def _supplier_name(item: ExtractedSignals | SupplierFacts) -> str:
+    if isinstance(item, SupplierFacts):
+        return item.supplier
+    return item.document.name
+
+
+def _candidate_overlap_lines(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return item.candidate_overlap_lines
+    return item.candidate_overlap_lines
+
+
+def _phones(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.phones]
+    return item.phones
+
+
+def _emails(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.emails]
+    return item.emails
+
+
+def _bank_accounts(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.bank_accounts]
+    return item.bank_accounts
+
+
+def _legal_representatives(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.legal_representatives]
+    return item.legal_representatives
+
+
+def _addresses(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.addresses]
+    return item.addresses
+
+
+def _bid_amounts(item: ExtractedSignals | SupplierFacts) -> list[float]:
+    if isinstance(item, SupplierFacts):
+        values: list[float] = []
+        for fact in item.bid_amounts:
+            try:
+                values.append(float(fact.value))
+            except ValueError:
+                continue
+        return values
+    return item.bid_amounts

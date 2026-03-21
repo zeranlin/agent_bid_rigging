@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
+from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.core.artifacts import (
@@ -133,6 +134,31 @@ def test_pairwise_scoring_can_stay_low() -> None:
     )
     assessment = assess_pairs([left, right])[0]
     assert assessment.risk_level == "low"
+
+
+def test_pairwise_scoring_accepts_review_facts() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：保洁服务")
+    baseline = build_tender_baseline(tender)
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "联系人电话：13800000000\n邮箱：same@example.com\n投标报价：100000\n自定义说明：错别字壹号",
+        ),
+        tender_lines=baseline,
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "联系人电话：13800000000\n邮箱：same@example.com\n投标报价：100000\n自定义说明：错别字壹号",
+        ),
+        tender_lines=baseline,
+    )
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    assessment = assess_pairs(review_facts)[0]
+    assert assessment.risk_level in {"high", "critical"}
+    assert assessment.risk_score >= 80
 
 
 def test_signature_noise_does_not_create_high_risk() -> None:
