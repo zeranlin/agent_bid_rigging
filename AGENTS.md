@@ -4,9 +4,9 @@ This repository is designed for agent-first execution. Treat this file as a map,
 
 ## Start here
 
-1. Read [ARCHITECTURE.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/ARCHITECTURE.md) for the system layers and the review loop.
-2. Read [docs/design-docs/index.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/index.md) for design intent.
-3. Check [docs/exec-plans/active/bootstrap-harness.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/exec-plans/active/bootstrap-harness.md) for the active plan.
+1. Read [ARCHITECTURE.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/ARCHITECTURE.md) for the system layers and the review loop.
+2. Read [docs/design-docs/index.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/design-docs/index.md) for design intent.
+3. Check [docs/exec-plans/active/bootstrap-harness.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/exec-plans/active/bootstrap-harness.md) for the active plan.
 4. Keep outputs reproducible by writing run artifacts into `runs/`.
 
 ## Working rules
@@ -32,7 +32,7 @@ This repository is designed for agent-first execution. Treat this file as a map,
 
 ## Documents
 
-- Architecture: [ARCHITECTURE.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/ARCHITECTURE.md)
-- Design docs: [docs/design-docs/index.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/design-docs/index.md)
-- Plan index: [docs/PLANS.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/docs/PLANS.md)
-- Test plan: [src/agent_bid_rigging/tests/TEST.md](/Users/linzeran/code/2026-zn/agent_bid_rigging/src/agent_bid_rigging/tests/TEST.md)
+- Architecture: [ARCHITECTURE.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/ARCHITECTURE.md)
+- Design docs: [docs/design-docs/index.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/design-docs/index.md)
+- Plan index: [docs/PLANS.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/PLANS.md)
+- Test plan: [src/agent_bid_rigging/tests/TEST.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/src/agent_bid_rigging/tests/TEST.md)
