@@ -34,6 +34,7 @@ from agent_bid_rigging.core.fusion import (
     append_ocr_authorization_rows,
     append_ocr_entity_rows,
     append_ocr_license_rows,
+    build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
     run_ocr_collection,
@@ -70,6 +71,7 @@ def run_review(
     ocr_capability = OcrCapability() if enable_ocr else None
 
     if ocr_capability is not None:
+        tender_request = build_review_ocr_request(role="tender")
         tender_ocr = run_ocr_collection(
             capability=ocr_capability,
             run_name=run_name,
@@ -77,6 +79,7 @@ def run_review(
             supplier=None,
             source_path=tender_path,
             output_dir=base_dir / "ocr" / "tender",
+            request=tender_request,
         )
         image_index_rows.extend(tender_ocr["image_index_rows"])
         image_ocr_rows.extend(tender_ocr["image_ocr_rows"])
@@ -85,6 +88,7 @@ def run_review(
         loaded = load_document(supplier_name, "bid", path)
         signals = extract_signals(loaded, tender_lines=tender_lines)
         if ocr_capability is not None:
+            bid_request = build_review_ocr_request(role="bid", supplier=supplier_name)
             bid_ocr = run_ocr_collection(
                 capability=ocr_capability,
                 run_name=run_name,
@@ -92,6 +96,7 @@ def run_review(
                 supplier=supplier_name,
                 source_path=path,
                 output_dir=base_dir / "ocr" / supplier_name,
+                request=bid_request,
             )
             image_index_rows.extend(bid_ocr["image_index_rows"])
             image_ocr_rows.extend(bid_ocr["image_ocr_rows"])

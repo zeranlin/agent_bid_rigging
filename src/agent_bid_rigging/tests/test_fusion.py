@@ -6,6 +6,7 @@ from agent_bid_rigging.core.fusion import (
     append_ocr_authorization_rows,
     append_ocr_entity_rows,
     append_ocr_license_rows,
+    build_review_ocr_request,
     merge_ocr_into_signal,
     renumber_ocr_rows,
 )
@@ -84,3 +85,17 @@ def test_renumber_ocr_rows_assigns_global_ids() -> None:
     assert image_index_rows[0]["image_id"] == "IMG001"
     assert image_index_rows[1]["image_id"] == "IMG002"
     assert image_ocr_rows[1]["image_index"] == 2
+
+
+def test_build_review_ocr_request_is_targeted_for_review_tasks() -> None:
+    tender_request = build_review_ocr_request(role="tender")
+    bid_request = build_review_ocr_request(role="bid", supplier="alpha")
+
+    assert tender_request.mode == "targeted"
+    assert "quotation" in tender_request.doc_types
+    assert tender_request.max_sources == 6
+
+    assert bid_request.mode == "targeted"
+    assert "business_license" in bid_request.doc_types
+    assert "开标一览表" in bid_request.file_hints
+    assert bid_request.metadata["supplier"] == "alpha"
