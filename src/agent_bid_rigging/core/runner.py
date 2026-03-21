@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +34,7 @@ from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.models import ExtractedSignals
 from agent_bid_rigging.utils.file_loader import load_document
+from agent_bid_rigging.utils.openai_client import OpenAIResponsesClient
 
 
 def run_review(
@@ -157,11 +161,21 @@ def run_review(
     (base_dir / "summary.md").write_text(_build_summary(report), encoding="utf-8")
     (base_dir / "formal_report.md").write_text(formal_report_markdown, encoding="utf-8")
 
+    llm_requested = _llm_requested(opinion_mode)
     llm_status = {
         "requested_mode": opinion_mode,
-        "state": "not-requested" if opinion_mode == "template" else "running",
+        "state": "not-requested" if not llm_requested else "running",
     }
     _write_json(base_dir / "llm_status.json", llm_status)
+    _write_json(base_dir / "pairwise_report.json", report)
+
+    if llm_requested and _use_async_llm():
+        pending_opinion = _pending_llm_opinion(report)
+        _write_json(base_dir / "opinion.json", pending_opinion)
+        (base_dir / "opinion.md").write_text(pending_opinion["document"], encoding="utf-8")
+        report["llm_status"] = llm_status
+        _spawn_llm_finisher(base_dir)
+        return report
 
     llm_review_layers = None
     llm_review_error = None
@@ -214,6 +228,67 @@ def run_review(
     return report
 
 
+def finish_llm_review(run_dir: str) -> dict:
+    base_dir = Path(run_dir).expanduser().resolve()
+    report = _load_report_context(base_dir)
+    formal_report_markdown = (base_dir / "formal_report.md").read_text(encoding="utf-8")
+    llm_status = {
+        "requested_mode": report.get("case_manifest", {}).get("opinion_mode", "llm"),
+        "state": "running",
+    }
+    _write_json(base_dir / "llm_status.json", llm_status)
+
+    try:
+        llm_review_layers = generate_llm_review_layers(
+            report,
+            formal_report_markdown=formal_report_markdown,
+            opinion_mode="llm",
+        )
+        if not llm_review_layers:
+            raise RuntimeError("LLM layers were not generated.")
+
+        report["llm_review_layers"] = llm_review_layers
+        formal_report_markdown = llm_review_layers.get("section_report", formal_report_markdown)
+        opinion = generate_review_opinion(report, opinion_mode="llm", llm_review_layers=llm_review_layers)
+
+        _write_json(base_dir / "llm_review_layers.json", llm_review_layers)
+        (base_dir / "llm_evidence_interpretation.md").write_text(
+            llm_review_layers["evidence_interpretation"],
+            encoding="utf-8",
+        )
+        (base_dir / "llm_section_report.md").write_text(
+            llm_review_layers["section_report"],
+            encoding="utf-8",
+        )
+        (base_dir / "llm_conclusion_memo.md").write_text(
+            llm_review_layers["conclusion_memo"],
+            encoding="utf-8",
+        )
+        (base_dir / "formal_report.md").write_text(formal_report_markdown, encoding="utf-8")
+        _write_json(base_dir / "opinion.json", opinion)
+        (base_dir / "opinion.md").write_text(opinion["document"], encoding="utf-8")
+        llm_status = {
+            "requested_mode": "llm",
+            "state": "completed",
+            "generated_at": llm_review_layers.get("generated_at"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        report["llm_review_error"] = str(exc)
+        fallback = generate_review_opinion(report, opinion_mode="template")
+        _write_json(base_dir / "opinion.json", fallback)
+        (base_dir / "opinion.md").write_text(fallback["document"], encoding="utf-8")
+        llm_status = {
+            "requested_mode": "llm",
+            "state": "failed",
+            "error": str(exc),
+        }
+
+    report["llm_status"] = llm_status
+    _write_json(base_dir / "llm_status.json", llm_status)
+    _write_json(base_dir / "pairwise_report.json", report)
+    return llm_status
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -262,3 +337,123 @@ def _overall_conclusion(assessments: list[dict]) -> str:
     if top["risk_level"] == "medium":
         return f"发现一定异常线索，建议优先复核 {top['supplier_a']} 与 {top['supplier_b']}。"
     return "未发现足以支持明显围串标怀疑的强异常信号。"
+
+
+def _llm_requested(opinion_mode: str) -> bool:
+    if opinion_mode == "llm":
+        return True
+    if opinion_mode == "auto":
+        return OpenAIResponsesClient.is_configured()
+    return False
+
+
+def _use_async_llm() -> bool:
+    return not _env_truthy(os.environ.get("AGENT_BID_RIGGING_SYNC_LLM", ""))
+
+
+def _pending_llm_opinion(report: dict) -> dict:
+    base = generate_review_opinion(report, opinion_mode="template")
+    return {
+        "mode": "pending-llm",
+        "generated_at": base["generated_at"],
+        "document": (
+            base["document"]
+            + "\n\n> 注：LLM 增强层仍在后台运行，完成后将自动更新本意见书与正式报告。"
+        ),
+    }
+
+
+def _spawn_llm_finisher(base_dir: Path) -> None:
+    subprocess.Popen(  # noqa: S603
+        [
+            sys.executable,
+            "-m",
+            "agent_bid_rigging.cli",
+            "finish-llm",
+            "--run-dir",
+            str(base_dir),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+        env=os.environ.copy(),
+    )
+
+
+def _env_truthy(raw: str) -> bool:
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_report_context(base_dir: Path) -> dict:
+    report_path = base_dir / "pairwise_report.json"
+    if report_path.exists():
+        return json.loads(report_path.read_text(encoding="utf-8"))
+
+    case_manifest = json.loads((base_dir / "case_manifest.json").read_text(encoding="utf-8"))
+    formal_report = json.loads((base_dir / "formal_report.json").read_text(encoding="utf-8"))
+    risk_score_table = json.loads((base_dir / "risk_score_table.json").read_text(encoding="utf-8"))["rows"]
+    evidence_grade_table = json.loads((base_dir / "evidence_grade_table.json").read_text(encoding="utf-8"))["rows"]
+    review_conclusion_table = json.loads((base_dir / "review_conclusion_table.json").read_text(encoding="utf-8"))
+    normalized_documents = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((base_dir / "normalized").glob("*.json"))
+    ]
+    pairwise_assessments = _rebuild_pairwise_assessments(risk_score_table, evidence_grade_table)
+    return {
+        "run_name": case_manifest["case_id"],
+        "generated_at": case_manifest["generated_at"],
+        "suppliers": case_manifest["input_summary"]["supplier_names"],
+        "normalized_documents": normalized_documents,
+        "pairwise_assessments": pairwise_assessments,
+        "case_manifest": case_manifest,
+        "risk_score_table": risk_score_table,
+        "evidence_grade_table": evidence_grade_table,
+        "review_conclusion_table": review_conclusion_table,
+        "formal_report": formal_report,
+    }
+
+
+def _rebuild_pairwise_assessments(risk_rows: list[dict], evidence_rows: list[dict]) -> list[dict]:
+    evidence_map: dict[tuple[str, str], list[dict]] = {}
+    for row in evidence_rows:
+        pair = row["pair"].split(" 与 ")
+        if len(pair) != 2:
+            continue
+        key = (pair[0], pair[1])
+        evidence_map.setdefault(key, []).append(
+            {
+                "title": row["finding_title"],
+                "weight": _weight_from_finding_title(row["finding_title"]),
+                "evidence": row.get("evidence", []),
+            }
+        )
+
+    rows: list[dict] = []
+    for item in risk_rows:
+        key = (item["supplier_a"], item["supplier_b"])
+        rows.append(
+            {
+                "supplier_a": item["supplier_a"],
+                "supplier_b": item["supplier_b"],
+                "risk_score": item["total_score"],
+                "risk_level": item["risk_level"],
+                "findings": evidence_map.get(key, []),
+            }
+        )
+    return rows
+
+
+def _weight_from_finding_title(title: str) -> int:
+    weights = {
+        "银行账号重合": 35,
+        "联系人电话重合": 30,
+        "邮箱重合": 25,
+        "法定代表人信息重合": 25,
+        "地址信息重合": 20,
+        "投标报价完全一致": 35,
+        "投标报价极度接近": 20,
+        "投标报价较为接近": 10,
+        "仅两家共享的非模板文本重合": 30,
+    }
+    return weights.get(title, 10)

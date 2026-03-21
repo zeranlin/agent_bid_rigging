@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import shlex
+from pathlib import Path
 
 import click
 
-from agent_bid_rigging.core.runner import run_review
+from agent_bid_rigging.core.runner import finish_llm_review, run_review
 
 
 @click.group(invoke_without_command=True)
@@ -66,6 +67,45 @@ def analyze(
         click.echo(
             f"- {item['supplier_a']} vs {item['supplier_b']}: {item['risk_level']} ({item['risk_score']})"
         )
+
+
+@cli.command("finish-llm")
+@click.option("--run-dir", required=True, type=click.Path(exists=True))
+@click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
+@click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
+@click.pass_context
+def finish_llm(
+    ctx: click.Context,
+    run_dir: str,
+    json_flag: bool,
+    json_flag_compat: bool,
+) -> None:
+    payload = finish_llm_review(run_dir)
+    if ctx.obj.get("json_output") or json_flag or json_flag_compat:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(f"LLM 状态: {payload['state']}")
+
+
+@cli.command("llm-status")
+@click.option("--run-dir", required=True, type=click.Path(exists=True))
+@click.option("--json", "json_flag", is_flag=True, help="Print machine-readable output.")
+@click.option("--json-output", "json_flag_compat", is_flag=True, help="Compatibility alias for --json.")
+@click.pass_context
+def llm_status(
+    ctx: click.Context,
+    run_dir: str,
+    json_flag: bool,
+    json_flag_compat: bool,
+) -> None:
+    path = Path(run_dir) / "llm_status.json"
+    if not path.exists():
+        raise click.ClickException(f"Missing llm_status.json under {run_dir}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if ctx.obj.get("json_output") or json_flag or json_flag_compat:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(f"LLM 状态: {payload.get('state', 'unknown')}")
 
 
 @cli.command()
