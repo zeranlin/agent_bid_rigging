@@ -9,6 +9,7 @@ from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.core.artifacts import (
+    _build_supplier_profiles_from_facts,
     build_authorization_chain_table,
     build_duplicate_detection_table,
     build_evidence_grade_table,
@@ -16,7 +17,10 @@ from agent_bid_rigging.core.artifacts import (
     build_formal_report_markdown,
     build_review_conclusion_table,
     build_risk_score_table,
+    build_timeline_table,
     classify_document,
+    _build_timeline_opinion,
+    _build_timeline_points,
 )
 from agent_bid_rigging.utils.file_loader import load_document
 
@@ -811,6 +815,49 @@ def test_structure_homology_detects_table_structure_without_forcing_combo() -> N
 
     assert "关键表格结构高度一致" in titles
     assert "异常同构结构" not in titles
+
+
+def test_timeline_trace_detects_shared_created_and_modified_times() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    left.document.metadata["components"] = [
+        {"display_name": "A.pdf", "relative_path": "A.pdf", "sha256": "ha", "created_at": "2026-03-20T10:00:00", "modified_at": "2026-03-20T10:05:00"}
+    ]
+    right.document.metadata["components"] = [
+        {"display_name": "B.pdf", "relative_path": "B.pdf", "sha256": "hb", "created_at": "2026-03-20T10:00:00", "modified_at": "2026-03-20T10:05:00"}
+    ]
+    review_facts = build_review_facts(tender, [left, right], [], [])
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "创建修改时间高度重合" in titles
+    assert assessment.dimension_summary["timeline_trace"]["matched"] is True
+    assert assessment.dimension_summary["timeline_trace"]["tier"] == "medium"
+
+
+def test_timeline_table_and_report_include_created_modified_and_fingerprint_support() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    left.document.metadata["components"] = [
+        {"display_name": "A.pdf", "relative_path": "A.pdf", "sha256": "ha", "created_at": "2026-03-20T10:00:00", "modified_at": "2026-03-20T10:05:00"}
+    ]
+    review_facts = build_review_facts(tender, [left], [], [])
+    timeline_table = build_timeline_table(review_facts)
+    profiles = _build_supplier_profiles_from_facts(review_facts, [], [], timeline_table)
+
+    assert timeline_table[0]["created_times"] == ["2026-03-20T10:00:00"]
+    assert timeline_table[0]["modified_times"] == ["2026-03-20T10:05:00"]
+    assert timeline_table[0]["fingerprint_count"] >= 1
+
+    points = _build_timeline_points(profiles)
+    opinion = _build_timeline_opinion(profiles)
+
+    assert "创建时间提取 1 条" in points[0]
+    assert "修改时间提取 1 条" in points[0]
+    assert "文件指纹" in points[0]
+    assert "时间与电子痕迹" in opinion or "创建时间" in opinion
 
 
 def test_formal_report_explains_normal_vs_abnormal_structure_homology() -> None:

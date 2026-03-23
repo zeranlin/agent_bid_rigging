@@ -402,6 +402,7 @@ def _build_supplier_facts(
         addresses=_build_text_observations(signal.addresses, signal.document.path),
         bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
         pricing_rows=[],
+        timeline_created_times=_extract_created_times(signal.document.metadata.get("components", [])),
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
         file_fingerprints=_build_file_fingerprints(signal),
         section_order_profile=_build_section_order_profile(supplier_section_rows),
@@ -1037,6 +1038,14 @@ def _extract_modified_times(components: list[dict]) -> list[str]:
         component["modified_at"]
         for component in components
         if component.get("modified_at")
+    ]
+
+
+def _extract_created_times(components: list[dict]) -> list[str]:
+    return [
+        component["created_at"]
+        for component in components
+        if component.get("created_at")
     ]
 
 

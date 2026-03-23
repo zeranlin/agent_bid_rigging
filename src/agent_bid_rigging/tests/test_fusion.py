@@ -228,3 +228,24 @@ def test_build_review_facts_carries_structure_profiles() -> None:
     assert supplier.section_order_profile == ["letter", "quotation"]
     assert supplier.table_structure_profiles
     assert supplier.table_structure_profiles[0]["source_section"] == "二、开标一览表"
+
+
+def test_build_review_facts_carries_timeline_created_and_modified_times() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    signal.document.metadata["components"] = [
+        {
+            "display_name": "开标一览表.pdf",
+            "relative_path": "开标一览表.pdf",
+            "sha256": "abc123",
+            "size_bytes": 128,
+            "created_at": "2026-03-20T10:00:00",
+            "modified_at": "2026-03-20T10:05:00",
+        }
+    ]
+
+    review_facts = build_review_facts(tender, [signal], [], [])
+    supplier = review_facts.suppliers[0]
+
+    assert supplier.timeline_created_times == ["2026-03-20T10:00:00"]
+    assert supplier.timeline_modified_times == ["2026-03-20T10:05:00"]

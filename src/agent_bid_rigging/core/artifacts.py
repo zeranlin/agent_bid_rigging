@@ -773,6 +773,9 @@ def _build_supplier_profiles(
                 "license_numbers": auth_map.get(supplier, {}).get("license_numbers", [])[:3],
                 "registration_numbers": auth_map.get(supplier, {}).get("registration_numbers", [])[:3],
                 "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
+                "created_times": timeline_map.get(supplier, {}).get("created_times", [])[:20],
+                "modified_times": timeline_map.get(supplier, {}).get("modified_times", [])[:20],
+                "fingerprint_count": timeline_map.get(supplier, {}).get("fingerprint_count", 0),
                 "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
             }
         )
@@ -811,6 +814,9 @@ def _build_supplier_profiles_from_facts(
                 "license_numbers": _observation_values(supplier, "license_numbers")[:3],
                 "registration_numbers": _observation_values(supplier, "registration_numbers")[:3],
                 "authorization_summary": auth_map.get(supplier.supplier, {}).get("summary", "未发现明确授权链线索"),
+                "created_times": timeline_map.get(supplier.supplier, {}).get("created_times", [])[:20],
+                "modified_times": timeline_map.get(supplier.supplier, {}).get("modified_times", [])[:20],
+                "fingerprint_count": timeline_map.get(supplier.supplier, {}).get("fingerprint_count", 0),
                 "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
             }
         )
@@ -1063,17 +1069,17 @@ def _authorization_titles_form_actionable_combo(titles: set[str]) -> bool:
 
 def _build_timeline_points(profiles: list[dict]) -> list[str]:
     return [
-        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}。"
+        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}；创建时间提取 {len(profile.get('created_times', []))} 条，修改时间提取 {len(profile.get('modified_times', []))} 条，文件指纹 {profile.get('fingerprint_count', 0)} 项。"
         for profile in profiles
     ] or ["当前未形成稳定的时间特征分析结果。"]
 
 
 def _build_timeline_opinion(profiles: list[dict]) -> str:
-    if any(profile["timeline_summary"] == "存在集中生成迹象" for profile in profiles):
-        return "部分供应商文件存在集中生成迹象，但仍需结合平台日志、原始文件元数据等进一步判断是否属于异常同源制作。"
+    if any(profile["timeline_summary"] in {"创建、修改时间均存在集中生成迹象", "修改时间存在集中生成迹象"} for profile in profiles):
+        return "部分供应商文件在创建时间或修改时间上呈现集中生成特征，可作为时间与电子痕迹维度的辅助线索；仍需结合文件指纹、平台日志和原始元数据继续核实。"
     if all(profile["timeline_summary"] == "无组件级时间信息" for profile in profiles):
-        return "现有材料未提取到足够的组件级时间信息，暂不能仅依据时间特征作出倾向性判断。"
-    return "目前未发现足以证明同一主体集中制作全部投标文件的明确时间线证据。"
+        return "现有材料未提取到足够的创建时间或修改时间信息，暂不能仅依据时间与电子痕迹作出倾向性判断。"
+    return "目前未发现足以证明同一主体集中制作全部投标文件的明确时间与电子痕迹证据。"
 
 
 def _build_suspicious_points(
@@ -1626,14 +1632,23 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
     if supplier_facts is not None:
         for supplier in supplier_facts:
             components = supplier.document.metadata.get("components", [])
+            created_times = supplier.timeline_created_times[:20]
             modified_times = supplier.timeline_modified_times[:20]
+            fingerprint_count = len({row.get("sha256") for row in supplier.file_fingerprints if row.get("sha256")})
             rows.append(
                 {
                     "supplier": supplier.supplier,
                     "component_count": len(components) or 1,
+                    "created_times": created_times,
                     "modified_times": modified_times,
+                    "fingerprint_count": fingerprint_count,
                     "summary": (
-                        "存在集中生成迹象"
+                        "创建、修改时间均存在集中生成迹象"
+                        if created_times
+                        and modified_times
+                        and len(set(created_times)) <= max(1, len(created_times) // 4)
+                        and len(set(modified_times)) <= max(1, len(modified_times) // 4)
+                        else "修改时间存在集中生成迹象"
                         if modified_times and len(set(modified_times)) <= max(1, len(modified_times) // 4)
                         else "无组件级时间信息" if not components else "未见明显集中生成特征"
                     ),
@@ -1647,20 +1662,30 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
                 {
                     "supplier": signal.document.name,
                     "component_count": 1,
+                    "created_times": [],
                     "modified_times": [],
+                    "fingerprint_count": 1,
                     "summary": "无组件级时间信息",
                 }
             )
             continue
+        created_times = [component.get("created_at") for component in components if component.get("created_at")]
         modified_times = [component.get("modified_at") for component in components if component.get("modified_at")]
         rows.append(
             {
                 "supplier": signal.document.name,
                 "component_count": len(components),
+                "created_times": created_times[:20],
                 "modified_times": modified_times[:20],
+                "fingerprint_count": len({component.get("sha256") for component in components if component.get("sha256")}),
                 "summary": (
-                    "存在集中生成迹象"
-                    if len(set(modified_times)) <= max(1, len(modified_times) // 4)
+                    "创建、修改时间均存在集中生成迹象"
+                    if created_times
+                    and modified_times
+                    and len(set(created_times)) <= max(1, len(created_times) // 4)
+                    and len(set(modified_times)) <= max(1, len(modified_times) // 4)
+                    else "修改时间存在集中生成迹象"
+                    if modified_times and len(set(modified_times)) <= max(1, len(modified_times) // 4)
                     else "未见明显集中生成特征"
                 ),
             }
@@ -1874,10 +1899,22 @@ def _structure_indicator(assessment: PairwiseAssessment) -> str:
 
 
 def _timeline_indicator(left: dict, right: dict) -> str:
+    left_created = set(left.get("created_times", []))
+    right_created = set(right.get("created_times", []))
     left_times = set(left.get("modified_times", []))
     right_times = set(right.get("modified_times", []))
-    if left_times and right_times and left_times & right_times:
-        return f"shared:{len(left_times & right_times)}"
+    fingerprint_count = min(int(left.get("fingerprint_count", 0) or 0), int(right.get("fingerprint_count", 0) or 0))
+    shared_created = left_created & right_created
+    shared_modified = left_times & right_times
+    parts: list[str] = []
+    if shared_created:
+        parts.append(f"created:{len(shared_created)}")
+    if shared_modified:
+        parts.append(f"modified:{len(shared_modified)}")
+    if fingerprint_count:
+        parts.append(f"fingerprints:{fingerprint_count}")
+    if parts:
+        return "；".join(parts)
     return "none"
 
 

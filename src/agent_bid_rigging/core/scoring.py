@@ -136,6 +136,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
         findings.extend(_pricing_row_findings(left, right))
         findings.extend(_authorization_findings(left, right))
         findings.extend(_structure_findings(left, right))
+        findings.extend(_timeline_findings(left, right))
         findings.extend(_pair_only_line_findings(left, right, global_line_counts))
 
         score = sum(finding.weight for finding in findings)
@@ -468,6 +469,40 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
     return findings
 
 
+def _timeline_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
+    findings: list[PairwiseFinding] = []
+    left_created = set(_timeline_created_times(left))
+    right_created = set(_timeline_created_times(right))
+    left_modified = set(_timeline_modified_times(left))
+    right_modified = set(_timeline_modified_times(right))
+
+    shared_created = sorted(left_created & right_created)
+    shared_modified = sorted(left_modified & right_modified)
+    if shared_created and shared_modified:
+        findings.append(
+            PairwiseFinding(
+                title="创建修改时间高度重合",
+                weight=18,
+                evidence=[
+                    f"共享创建时间数: {len(shared_created)}",
+                    f"共享修改时间数: {len(shared_modified)}",
+                ],
+            )
+        )
+    elif shared_created or shared_modified:
+        findings.append(
+            PairwiseFinding(
+                title="时间轨迹异常接近",
+                weight=10,
+                evidence=[
+                    f"共享创建时间数: {len(shared_created)}",
+                    f"共享修改时间数: {len(shared_modified)}",
+                ],
+            )
+        )
+    return findings
+
+
 def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
     if any(pattern in line for pattern in TEMPLATE_OVERLAP_PATTERNS):
         return True
@@ -623,8 +658,10 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "medium"
     if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合", "授权范围重合"}:
         return "medium"
-    if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似"}:
+    if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似", "时间轨迹异常接近"}:
         return "weak"
+    if title in {"创建修改时间高度重合"}:
+        return "medium"
     if title == "仅两家共享的共同错误表述":
         return "medium"
     if title == "仅两家共享的罕见表达重合":
@@ -772,6 +809,26 @@ def _addresses(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.addresses]
     return item.addresses
+
+
+def _timeline_created_times(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_created_times)
+    return [
+        component["created_at"]
+        for component in item.document.metadata.get("components", [])
+        if component.get("created_at")
+    ]
+
+
+def _timeline_modified_times(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_modified_times)
+    return [
+        component["modified_at"]
+        for component in item.document.metadata.get("components", [])
+        if component.get("modified_at")
+    ]
 
 
 def _normalize_address(value: str) -> str:
