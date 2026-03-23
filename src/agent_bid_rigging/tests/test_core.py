@@ -4,6 +4,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from agent_bid_rigging.models import FactObservation
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
@@ -296,6 +297,24 @@ def test_pairwise_scoring_uses_contact_names_and_normalized_addresses() -> None:
     assert "联系人姓名重合" in titles
     assert "地址信息重合" in titles
     assert assessment.dimension_summary["identity_link"]["matched"] is True
+
+
+def test_pairwise_scoring_normalizes_person_name_variants() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标报价：120000"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    review_facts.suppliers[0].contact_names = [
+        FactObservation(value="王小明先生", source_type="ocr", source_document="/tmp/a.pdf", is_primary=True)
+    ]
+    review_facts.suppliers[1].contact_names = [
+        FactObservation(value="王小明", source_type="text", source_document="/tmp/b.txt", is_primary=True)
+    ]
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "联系人姓名重合" in titles
 
 
 def test_signature_noise_does_not_create_high_risk() -> None:
@@ -936,6 +955,65 @@ def test_formal_report_explains_normal_vs_abnormal_structure_homology() -> None:
 
     assert "结构编排存在相似性" in markdown
     assert "需进一步复核是否存在同底稿加工或异常同构制作" in markdown
+
+
+def test_formal_report_identity_section_explains_candidate_conflicts() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "内蒙古阿尔法科技有限公司\n法定代表人：张三\n联系人：王小明\n地址：呼和浩特市新城区示例路1号\n投标报价：100000",
+        )
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "内蒙古贝塔科技有限公司\n法定代表人：李四\n联系人：赵六\n地址：包头市昆都仑区示例路2号\n投标报价：120000",
+        )
+    )
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    review_facts.suppliers[0].contact_names.append(
+        review_facts.suppliers[0].contact_names[0].__class__(
+            value="王小明先生",
+            source_type="ocr",
+            source_document="/tmp/a.pdf",
+            source_page=1,
+            confidence=0.8,
+            is_primary=False,
+        )
+    )
+    review_facts.suppliers[0].addresses.append(
+        review_facts.suppliers[0].addresses[0].__class__(
+            value="中国呼和浩特市新城区示例路1号",
+            source_type="ocr",
+            source_document="/tmp/a.pdf",
+            source_page=1,
+            confidence=0.8,
+            is_primary=False,
+        )
+    )
+    price_table = build_risk_score_table(assess_pairs(review_facts), [], [], [], [], [])
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-identity-conflict",
+            "generated_at": "2026-03-23T18:30:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table=build_review_conclusion_table(assess_pairs(review_facts)),
+        evidence_grade_table=build_evidence_grade_table(assess_pairs(review_facts)),
+        risk_score_table=price_table,
+        review_facts=review_facts,
+        authorization_chain_table=build_authorization_chain_table(review_facts),
+    )
+    markdown = build_formal_report_markdown(report)
+
+    assert "主体字段存在多个候选值" in markdown
+    assert "联系人另有候选值 `王小明先生`" in markdown
+    assert "地址另有候选值 `中国呼和浩特市新城区示例路1号`" in markdown
 
 
 def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> None:

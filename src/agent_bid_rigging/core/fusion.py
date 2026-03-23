@@ -620,6 +620,13 @@ def _build_supplier_facts(
                 prefer_primary=False,
             )
 
+    facts.company_names = _filter_company_name_observations(facts.company_names)
+    facts.contact_names = _filter_contact_observations(facts.contact_names)
+    facts.legal_representatives = _filter_legal_observations(facts.legal_representatives)
+    facts.authorized_representatives = _filter_legal_observations(facts.authorized_representatives)
+    facts.addresses = _filter_address_observations(facts.addresses)
+    facts.unified_social_credit_codes = _filter_credit_code_observations(facts.unified_social_credit_codes)
+
     return facts
 
 
@@ -1230,13 +1237,11 @@ def _filter_company_name_observations(observations: list[FactObservation]) -> li
 
 
 def _filter_legal_observations(observations: list[FactObservation]) -> list[FactObservation]:
-    filtered = [item for item in observations if _looks_like_person_name(item.value)]
-    return _rebuild_primary(filtered)
+    return _filter_person_observations(observations, contact_mode=False)
 
 
 def _filter_contact_observations(observations: list[FactObservation]) -> list[FactObservation]:
-    filtered = [item for item in observations if _looks_like_contact_name(item.value)]
-    return _rebuild_primary(filtered)
+    return _filter_person_observations(observations, contact_mode=True)
 
 
 def _filter_address_observations(observations: list[FactObservation]) -> list[FactObservation]:
@@ -1245,6 +1250,36 @@ def _filter_address_observations(observations: list[FactObservation]) -> list[Fa
     for item in observations:
         normalized = _normalize_address_text(item.value)
         if not _looks_like_address(normalized):
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        filtered.append(
+            FactObservation(
+                value=normalized,
+                source_type=item.source_type,
+                source_document=item.source_document,
+                source_page=item.source_page,
+                confidence=item.confidence,
+                is_primary=item.is_primary,
+            )
+        )
+    return _rebuild_primary(filtered)
+
+
+def _filter_person_observations(
+    observations: list[FactObservation],
+    *,
+    contact_mode: bool,
+) -> list[FactObservation]:
+    filtered: list[FactObservation] = []
+    seen: set[str] = set()
+    for item in observations:
+        normalized = _normalize_person_name_text(item.value)
+        if contact_mode:
+            if not _looks_like_contact_name(normalized):
+                continue
+        elif not _looks_like_person_name(normalized):
             continue
         if normalized in seen:
             continue
@@ -1286,19 +1321,21 @@ def _looks_like_company_name(value: str) -> bool:
 
 
 def _looks_like_person_name(value: str) -> bool:
-    if not value:
+    normalized = _normalize_person_name_text(value)
+    if not normalized:
         return False
-    if any(token in value for token in ("单位负责人", "证明书", "法定代表", "控股", "关系", "企业", "签字", "盖章")):
+    if any(token in normalized for token in ("单位负责人", "证明书", "法定代表", "控股", "关系", "企业", "签字", "盖章")):
         return False
-    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value))
+    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", normalized))
 
 
 def _looks_like_contact_name(value: str) -> bool:
-    if not value:
+    normalized = _normalize_person_name_text(value)
+    if not normalized:
         return False
-    if any(token in value for token in ("电话", "邮箱", "地址", "公司", "法定代表", "授权", "项目")):
+    if any(token in normalized for token in ("电话", "邮箱", "地址", "公司", "法定代表", "授权", "项目")):
         return False
-    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", value))
+    return bool(re.fullmatch(r"[A-Za-z\u4e00-\u9fff]{2,8}", normalized))
 
 
 def _looks_like_address(value: str) -> bool:
@@ -1314,8 +1351,24 @@ def _normalize_address_text(value: str) -> str:
     if not normalized:
         return ""
     normalized = normalized.replace("（", "(").replace("）", ")")
+    normalized = normalized.replace("中国", "")
+    normalized = re.sub(r"[，,；;。]+", "", normalized)
     normalized = re.sub(r"\s+", "", normalized)
     normalized = re.sub(r"[，,。；;：:]+$", "", normalized)
+    return normalized
+
+
+def _normalize_person_name_text(value: str) -> str:
+    normalized = normalize_text_field(value)
+    if not normalized:
+        return ""
+    normalized = re.sub(r"(先生|女士|老师)$", "", normalized)
+    normalized = re.sub(
+        r"(联系人|项目联系人|法定代表人|授权代表|委托代理人|代理人|被授权人|授权委托人)",
+        "",
+        normalized,
+    )
+    normalized = re.sub(r"[^\u4e00-\u9fffA-Za-z]", "", normalized)
     return normalized
 
 

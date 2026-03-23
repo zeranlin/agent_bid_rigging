@@ -249,3 +249,45 @@ def test_build_review_facts_carries_timeline_created_and_modified_times() -> Non
 
     assert supplier.timeline_created_times == ["2026-03-20T10:00:00"]
     assert supplier.timeline_modified_times == ["2026-03-20T10:05:00"]
+
+
+def test_build_review_facts_normalizes_person_names_and_addresses() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/a.pdf",
+            "page_index": 1,
+            "doc_type": "business_license",
+            "summary": "营业执照",
+            "extracted_text": "联系人：王小明先生",
+            "fields": {
+                "contact_name": "王小明先生",
+                "authorized_representative": "李四（授权代表）",
+                "address": "中国 呼和浩特市， 新城区示例路1号",
+            },
+            "confidence": 0.95,
+        },
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/b.pdf",
+            "page_index": 2,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "联系人：王小明",
+            "fields": {
+                "contact_name": "王小明",
+                "authorized_representative": "李四",
+                "address": "呼和浩特市新城区示例路1号",
+            },
+            "confidence": 0.9,
+        },
+    ]
+
+    review_facts = build_review_facts(tender, [signal], [], ocr_rows)
+    supplier = review_facts.suppliers[0]
+
+    assert [item.value for item in supplier.contact_names] == ["王小明"]
+    assert [item.value for item in supplier.authorized_representatives] == ["李四"]
+    assert [item.value for item in supplier.addresses] == ["呼和浩特市新城区示例路1号"]

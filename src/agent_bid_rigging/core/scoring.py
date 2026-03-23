@@ -114,9 +114,9 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
         findings.extend(_shared_field_findings("联系人电话重合", 30, _phones(left), _phones(right)))
         findings.extend(_shared_field_findings("邮箱重合", 25, _emails(left), _emails(right)))
         findings.extend(_shared_field_findings("银行账号重合", 35, _bank_accounts(left), _bank_accounts(right)))
-        findings.extend(_shared_field_findings("联系人姓名重合", 10, _contact_names(left), _contact_names(right)))
+        findings.extend(_normalized_shared_person_findings("联系人姓名重合", 10, _contact_names(left), _contact_names(right)))
         findings.extend(
-            _shared_field_findings(
+            _normalized_shared_person_findings(
                 "法定代表人信息重合",
                 25,
                 _legal_representatives(left),
@@ -124,7 +124,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
             )
         )
         findings.extend(
-            _shared_field_findings(
+            _normalized_shared_person_findings(
                 "授权代表信息重合",
                 20,
                 _authorized_representatives(left),
@@ -179,6 +179,26 @@ def _normalized_shared_field_findings(
 ) -> list[PairwiseFinding]:
     left_map = {_normalize_address(value): value for value in left_values if _normalize_address(value)}
     right_map = {_normalize_address(value): value for value in right_values if _normalize_address(value)}
+    overlap = sorted(set(left_map) & set(right_map))
+    if not overlap:
+        return []
+    return [
+        PairwiseFinding(
+            title=title,
+            weight=weight,
+            evidence=[f"共享字段值: {left_map[value]} / {right_map[value]}" for value in overlap[:5]],
+        )
+    ]
+
+
+def _normalized_shared_person_findings(
+    title: str,
+    weight: int,
+    left_values: list[str],
+    right_values: list[str],
+) -> list[PairwiseFinding]:
+    left_map = {_normalize_person_name(value): value for value in left_values if _normalize_person_name(value)}
+    right_map = {_normalize_person_name(value): value for value in right_values if _normalize_person_name(value)}
     overlap = sorted(set(left_map) & set(right_map))
     if not overlap:
         return []
@@ -834,8 +854,22 @@ def _timeline_modified_times(item: ExtractedSignals | SupplierFacts) -> list[str
 def _normalize_address(value: str) -> str:
     normalized = str(value or "").strip()
     normalized = normalized.replace("（", "(").replace("）", ")")
+    normalized = normalized.replace("中国", "")
+    normalized = re.sub(r"[，,；;。]+", "", normalized)
     normalized = "".join(normalized.split())
     return normalized.rstrip("，,。；;：:")
+
+
+def _normalize_person_name(value: str) -> str:
+    normalized = normalize_text_field(value)
+    normalized = re.sub(r"(先生|女士|老师)$", "", normalized)
+    normalized = re.sub(
+        r"(联系人|项目联系人|法定代表人|授权代表|委托代理人|代理人|被授权人|授权委托人)",
+        "",
+        normalized,
+    )
+    normalized = re.sub(r"[^\u4e00-\u9fffA-Za-z]", "", normalized)
+    return normalized
 
 
 def normalize_text_field(value: object) -> str:

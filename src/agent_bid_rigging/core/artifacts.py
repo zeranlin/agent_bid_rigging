@@ -759,12 +759,16 @@ def _build_supplier_profiles(
                 "bid_amount": price_map.get(supplier, {}).get("bid_amount") or _extract_bid_amount_from_text(text),
                 "phone": _first_or_none(doc.get("phones", [])),
                 "contact_name": _clean_person_name(_first_or_none(doc.get("contact_names", []))),
+                "contact_name_candidates": _candidate_values(doc.get("contact_names", [])),
                 "email": _first_or_none(doc.get("emails", [])),
                 "bank_account": _first_or_none(doc.get("bank_accounts", [])),
                 "unified_social_credit_code": _first_or_none(doc.get("unified_social_credit_codes", [])),
                 "legal_representative": _clean_person_name(_first_or_none(doc.get("legal_representatives", []))),
+                "legal_representative_candidates": _candidate_values(doc.get("legal_representatives", [])),
                 "authorized_representative": _clean_person_name(_first_or_none(doc.get("authorized_representatives", []))),
+                "authorized_representative_candidates": _candidate_values(doc.get("authorized_representatives", [])),
                 "address": _first_or_none(doc.get("addresses", [])),
+                "address_candidates": _candidate_values(doc.get("addresses", [])),
                 "authorized_manufacturers": auth_map.get(supplier, {}).get("authorized_manufacturers", [])[:3],
                 "authorization_issuers": auth_map.get(supplier, {}).get("authorization_issuers", [])[:3],
                 "authorization_dates": auth_map.get(supplier, {}).get("authorization_dates", [])[:3],
@@ -800,12 +804,16 @@ def _build_supplier_profiles_from_facts(
                 "bid_amount": price_map.get(supplier.supplier, {}).get("bid_amount") or _primary_value(supplier, "bid_amounts"),
                 "phone": _primary_value(supplier, "phones"),
                 "contact_name": _clean_person_name(_primary_value(supplier, "contact_names")),
+                "contact_name_candidates": _candidate_values(_observation_values(supplier, "contact_names")),
                 "email": _primary_value(supplier, "emails"),
                 "bank_account": _primary_value(supplier, "bank_accounts"),
                 "unified_social_credit_code": _primary_value(supplier, "unified_social_credit_codes"),
                 "legal_representative": _clean_person_name(_primary_value(supplier, "legal_representatives")),
+                "legal_representative_candidates": _candidate_values(_observation_values(supplier, "legal_representatives")),
                 "authorized_representative": _clean_person_name(_primary_value(supplier, "authorized_representatives")),
+                "authorized_representative_candidates": _candidate_values(_observation_values(supplier, "authorized_representatives")),
                 "address": _primary_value(supplier, "addresses"),
+                "address_candidates": _candidate_values(_observation_values(supplier, "addresses")),
                 "authorized_manufacturers": _observation_values(supplier, "authorized_manufacturers")[:3],
                 "authorization_issuers": _observation_values(supplier, "authorization_issuers")[:3],
                 "authorization_dates": _observation_values(supplier, "authorization_dates")[:3],
@@ -913,12 +921,15 @@ def _build_identity_points(profiles: list[dict]) -> list[str]:
             f"{profile['full_name']}法定代表人识别为 `{legal}`，授权代表识别为 `{authorized}`，联系人识别为 `{contact_name}`，"
             f"统一社会信用代码识别为 `{credit_code}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。"
         )
+        conflict_note = _identity_conflict_note(profile)
+        if conflict_note:
+            points.append(conflict_note)
     return points or ["当前未形成可用于身份信息比对的有效结果。"]
 
 
 def _build_identity_opinion(risk_score_table: list[dict]) -> str:
     if any(row["entity_link_score"] > 0 for row in risk_score_table):
-        return "现有文件中发现部分联系人、账户或主体信息关联线索，建议围绕该类核心身份要素开展重点核查。"
+        return "现有文件中发现部分联系人、账户或主体信息关联线索，建议围绕该类核心身份要素开展重点核查；如同一主体字段存在多个候选值，还应同步核验原始页面和签章件。"
     return "现有文件中未发现联系人、法定代表人、银行账户等核心身份要素的明显交叉重合，缺乏直接主体关联证据。"
 
 
@@ -1307,6 +1318,47 @@ def _extract_company_name(text: str) -> str | None:
 
 def _first_or_none(values: list[str]) -> str | None:
     return values[0] if values else None
+
+
+def _candidate_values(values: list[str] | None) -> list[str]:
+    cleaned = [str(value).strip() for value in (values or []) if str(value).strip()]
+    return list(dict.fromkeys(cleaned))[:3]
+
+
+def _identity_conflict_note(profile: dict) -> str:
+    notes: list[str] = []
+    legal_candidates = _remaining_candidates(
+        profile.get("legal_representative_candidates", []),
+        profile.get("legal_representative"),
+    )
+    authorized_candidates = _remaining_candidates(
+        profile.get("authorized_representative_candidates", []),
+        profile.get("authorized_representative"),
+    )
+    contact_candidates = _remaining_candidates(
+        profile.get("contact_name_candidates", []),
+        profile.get("contact_name"),
+    )
+    address_candidates = _remaining_candidates(
+        profile.get("address_candidates", []),
+        profile.get("address"),
+    )
+    if legal_candidates:
+        notes.append(f"法定代表人另有候选值 `{ '、'.join(legal_candidates) }`")
+    if authorized_candidates:
+        notes.append(f"授权代表另有候选值 `{ '、'.join(authorized_candidates) }`")
+    if contact_candidates:
+        notes.append(f"联系人另有候选值 `{ '、'.join(contact_candidates) }`")
+    if address_candidates:
+        notes.append(f"地址另有候选值 `{ '、'.join(address_candidates) }`")
+    if not notes:
+        return ""
+    return f"{profile['full_name']}主体字段存在多个候选值，当前优先采用上述主采纳值；另识别到：{'；'.join(notes)}，建议结合原始页和签章件进一步核验。"
+
+
+def _remaining_candidates(values: list[str], primary: str | None) -> list[str]:
+    primary_text = str(primary or "").strip()
+    return [value for value in values if value and value != primary_text][:3]
 
 
 def _extract_bid_amount_from_text(text: str) -> str | None:
