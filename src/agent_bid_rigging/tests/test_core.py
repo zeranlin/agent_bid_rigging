@@ -1150,21 +1150,21 @@ def test_shared_error_like_text_is_prioritized_over_general_overlap() -> None:
         load_document_from_text(
             "alpha",
             "bid",
-            "商务应答\n接口响应状态码填写有误，导致结算流程不一致。\n其余内容略。",
+            "商务应答\n供应商A专用说明。\n联系人电话填写有误，税率字段漏填，导致应答表字段信息缺失。\n其余内容略。",
         )
     )
     right = extract_signals(
         load_document_from_text(
             "beta",
             "bid",
-            "商务应答\n接口响应状态码填写有误，导致结算流程不一致。\n其余内容略。",
+            "商务应答\n供应商B专用说明。\n联系人电话填写有误，税率字段漏填，导致应答表字段信息缺失。\n其余内容略。",
         )
     )
 
     assessment = assess_pairs([left, right])[0]
     titles = {finding.title for finding in assessment.findings}
 
-    assert "仅两家共享的共同错误表述" in titles
+    assert "仅两家共享的字段错填" in titles
     assert "仅两家共享的一般文本相似" not in titles
     assert assessment.dimension_summary["text_similarity"]["tier"] == "medium"
 
@@ -1181,14 +1181,79 @@ def test_shared_rare_expression_is_detected_as_text_signal() -> None:
 
 
 def test_shared_numbering_error_is_detected_as_error_like_text_signal() -> None:
-    line = "序号 3 页码填写有误，导致接口编号与附件目录不一致。"
-    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n{line}\n其余内容略。"))
-    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n{line}\n其余内容略。"))
+    line = "序号 3 页码填写有误，导致附件编号与目录页码对应关系错误。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n供应商A备注。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n供应商B备注。\n{line}\n其余内容略。"))
 
     assessment = assess_pairs([left, right])[0]
     titles = {finding.title for finding in assessment.findings}
 
-    assert "仅两家共享的共同错误表述" in titles
+    assert "仅两家共享的编号错误" in titles
+
+
+def test_shared_formatting_error_is_detected_as_text_signal() -> None:
+    line = "项目名称：电子商城建设项目（服务期十二个月，交付要求详见附件。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n供应商A备注。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n供应商B备注。\n{line}\n其余内容略。"))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的排版错误" in titles
+
+
+def test_shared_logic_conflict_is_detected_as_text_signal() -> None:
+    line = "交付时间前后不符，与附件说明不一致，导致实施安排存在逻辑冲突。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n供应商A备注。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n供应商B备注。\n{line}\n其余内容略。"))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的逻辑矛盾表述" in titles
+
+
+def test_shared_error_category_uses_highest_priority_match() -> None:
+    line = "序号 3 填写有误，与目录不符，导致该页内容前后存在逻辑矛盾。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n供应商A备注。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n供应商B备注。\n{line}\n其余内容略。"))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的逻辑矛盾表述" in titles
+    assert "仅两家共享的字段错填" not in titles
+    assert "仅两家共享的编号错误" not in titles
+
+
+def test_text_error_titles_are_rendered_consistently_in_report_and_appendix() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    line = "交付时间前后不符，与附件说明不一致，导致实施安排存在逻辑冲突。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n供应商A备注。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n供应商B备注。\n{line}\n其余内容略。"))
+
+    assessments = assess_pairs([left, right])
+    evidence = build_evidence_grade_table(assessments)
+    risk = build_risk_score_table(assessments, [], [], [], [], [])
+    review_conclusion = build_review_conclusion_table(assessments)
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-text-logic-1",
+            "generated_at": "2026-03-23T12:20:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table=review_conclusion,
+        evidence_grade_table=evidence,
+        risk_score_table=risk,
+        review_facts=build_review_facts(tender, [left, right], [], []),
+    )
+    markdown = build_formal_report_markdown(report)
+
+    assert "仅两家共享的逻辑矛盾表述" in {item["finding_title"] for item in evidence}
+    assert "两家投标文件存在逻辑矛盾表述" in markdown
+    assert "出现相同逻辑矛盾或前后不符表述" in markdown
 
 
 def test_general_text_similarity_does_not_form_actionable_clue_by_itself() -> None:

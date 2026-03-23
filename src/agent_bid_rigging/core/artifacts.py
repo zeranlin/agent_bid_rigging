@@ -46,6 +46,19 @@ DIMENSION_TIER_LABELS = {
     "none": "未命中",
 }
 
+TEXT_PRIORITY_TITLES = {
+    "仅两家共享的排版错误",
+    "仅两家共享的编号错误",
+    "仅两家共享的字段错填",
+    "仅两家共享的逻辑矛盾表述",
+    "仅两家共享的罕见表达重合",
+}
+TEXT_SUPPORTING_TITLES = {
+    "仅两家共享的一般文本相似",
+    "仅两家共享的非模板文本重合",
+}
+TEXT_ALL_TITLES = TEXT_PRIORITY_TITLES | TEXT_SUPPORTING_TITLES | {"仅两家共享的共同错误表述"}
+
 
 def _coerce_suppliers(payload: ReviewFacts | list[ExtractedSignals]) -> list[SupplierFacts] | None:
     if isinstance(payload, ReviewFacts):
@@ -884,15 +897,15 @@ def _build_structure_summary(
     supplier_name_map: dict[str, str] | None = None,
 ) -> dict:
     if not structure_similarity_table:
-        return {
-            "points": ["当前未形成可比较的文档结构分析结果。"],
-            "opinion": "结构比对信息不足，暂不作单独判断。",
-        }
-    avg_overlap = sum(row["category_overlap_ratio"] for row in structure_similarity_table) / len(structure_similarity_table)
-    points = [
-        f"各投标文件目录结构和材料类别存在一定相似性，整体上有约{_overlap_ratio_text(avg_overlap)}的材料类别可相互对应。",
-        "一般目录编排或材料类别相似，在平台模板化申报场景下具有一定普遍性，应结合文件指纹、关键表格结构和其他维度综合判断。",
-    ]
+        points = ["当前未形成可比较的文档结构分析结果。"]
+        opinion = "结构比对信息不足，暂不作单独判断。"
+    else:
+        avg_overlap = sum(row["category_overlap_ratio"] for row in structure_similarity_table) / len(structure_similarity_table)
+        points = [
+            f"各投标文件目录结构和材料类别存在一定相似性，整体上有约{_overlap_ratio_text(avg_overlap)}的材料类别可相互对应。",
+            "一般目录编排或材料类别相似，在平台模板化申报场景下具有一定普遍性，应结合文件指纹、关键表格结构和其他维度综合判断。",
+        ]
+        opinion = "结构同源维度应优先看文件指纹、章节顺序和关键表格结构的组合关系。单独的目录相似或表格结构相似通常仅反映响应习惯接近，只有形成组合异常时，才宜进一步复核是否存在同底稿加工或异常同构制作。"
     for row in risk_score_table:
         pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
         homology_titles = row.get("dimension_summary", {}).get("file_homology", {}).get("finding_titles", [])
@@ -928,7 +941,15 @@ def _build_structure_summary(
         elif "关键表格结构相似" in title_set:
             points.append(f"{pair_label}关键表格结构存在相似性，暂作为结构层面的辅助线索。{_inline_example(evidence_map, '关键表格结构相似')}")
         text_titles = set(row.get("dimension_summary", {}).get("text_similarity", {}).get("finding_titles", []))
-        if "仅两家共享的共同错误表述" in text_titles:
+        if "仅两家共享的逻辑矛盾表述" in text_titles:
+            points.append(f"{pair_label}出现相同逻辑矛盾或前后不符表述，异常性较高，建议优先复核原始方案来源。")
+        elif "仅两家共享的字段错填" in text_titles:
+            points.append(f"{pair_label}出现相同字段错填或漏填表述，建议重点复核应答表与原始填报记录。")
+        elif "仅两家共享的编号错误" in text_titles:
+            points.append(f"{pair_label}出现相同编号或页码错误，具有一定异常性，建议继续核对原始编制底稿。")
+        elif "仅两家共享的排版错误" in text_titles:
+            points.append(f"{pair_label}出现相同排版或格式错误，建议结合原始底稿复核是否存在共用编辑模板。")
+        elif "仅两家共享的共同错误表述" in text_titles:
             points.append(f"{pair_label}出现共同错误或异常表述，需结合主体、报价和原始底稿进一步复核。")
         elif "仅两家共享的罕见表达重合" in text_titles:
             points.append(f"{pair_label}存在罕见表达重合，具有一定异常性，建议继续核对原始方案来源。")
@@ -948,7 +969,6 @@ def _build_structure_summary(
         )
     if section_similarity_table and not any(row["similarity"] >= 0.75 for row in section_similarity_table):
         points.append("对技术方案、实施方案和培训方案进行章节级比对后，当前未发现达到高相似度阈值的章节组合。")
-    opinion = "结构同源维度应优先看文件指纹、章节顺序和关键表格结构的组合关系。单独的目录相似或表格结构相似通常仅反映响应习惯接近，只有形成组合异常时，才宜进一步复核是否存在同底稿加工或异常同构制作。"
     return {"points": points, "opinion": opinion}
 
 
@@ -1096,14 +1116,9 @@ def _assessment_has_actionable_clues(assessment: PairwiseAssessment) -> bool:
     }
     if titles <= non_actionable_structure_titles:
         return False
-    text_titles = {
-        "仅两家共享的共同错误表述",
-        "仅两家共享的罕见表达重合",
-        "仅两家共享的一般文本相似",
-        "仅两家共享的非模板文本重合",
-    }
+    text_titles = TEXT_ALL_TITLES
     if titles <= text_titles:
-        return bool(titles & {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合", "仅两家共享的非模板文本重合"})
+        return bool(titles & (TEXT_PRIORITY_TITLES | {"仅两家共享的共同错误表述"}))
     return True
 
 
@@ -1130,7 +1145,7 @@ def _risk_row_has_actionable_clues(row: dict) -> bool:
             return False
     if matched_dimensions == {"text_similarity"}:
         text_titles = set(summary.get("text_similarity", {}).get("finding_titles", []))
-        if text_titles <= {"仅两家共享的一般文本相似"}:
+        if text_titles <= TEXT_SUPPORTING_TITLES:
             return False
     return True
 
@@ -1253,12 +1268,13 @@ def _build_text_overlap_appendix(
 ) -> list[dict]:
     rows: list[dict] = []
     for item in evidence_grade_table:
-        if "文本重合" not in item.get("finding_title", ""):
+        finding_title = str(item.get("finding_title") or "")
+        if finding_title not in TEXT_ALL_TITLES and "文本重合" not in finding_title:
             continue
         rows.append(
             {
                 "pair": _replace_supplier_names(item["pair"], supplier_name_map),
-                "finding_title": _plain_text_overlap_title(item["finding_title"]),
+                "finding_title": _plain_text_overlap_title(finding_title),
                 "evidence_grade": item["evidence_grade"],
                 "grade_text": _evidence_reason_to_plain_text(item.get("reason", "")),
                 "snippets": _extract_overlap_snippets(item.get("evidence", [])),
@@ -1270,7 +1286,8 @@ def _build_text_overlap_appendix(
 
 def _text_overlap_snippets_for_pair(pair: str, evidence_grade_table: list[dict]) -> list[str]:
     for item in evidence_grade_table:
-        if item.get("pair") == pair and "文本重合" in item.get("finding_title", ""):
+        finding_title = str(item.get("finding_title") or "")
+        if item.get("pair") == pair and (finding_title in TEXT_ALL_TITLES or "文本重合" in finding_title):
             return _extract_overlap_snippets(item.get("evidence", []))
     return []
 
@@ -1318,6 +1335,14 @@ def _evidence_reason_to_plain_text(reason: str) -> str:
 
 
 def _plain_text_overlap_title(title: str) -> str:
+    if title == "仅两家共享的排版错误":
+        return "两家投标文件存在排版错误"
+    if title == "仅两家共享的编号错误":
+        return "两家投标文件存在编号错误"
+    if title == "仅两家共享的字段错填":
+        return "两家投标文件存在字段错填"
+    if title == "仅两家共享的逻辑矛盾表述":
+        return "两家投标文件存在逻辑矛盾表述"
     if title == "仅两家共享的共同错误表述":
         return "两家投标文件存在共同错误或异常表述"
     if title == "仅两家共享的罕见表达重合":
@@ -2090,9 +2115,9 @@ def _extract_named_values(text: str, field_names: tuple[str, ...]) -> list[str]:
 
 
 def _evidence_grade(finding) -> str:
-    if finding.title in {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合"}:
+    if finding.title in {"仅两家共享的编号错误", "仅两家共享的字段错填", "仅两家共享的逻辑矛盾表述", "仅两家共享的共同错误表述", "仅两家共享的罕见表达重合"}:
         return "B"
-    if finding.title in {"仅两家共享的一般文本相似", "仅两家共享的非模板文本重合"}:
+    if finding.title in {"仅两家共享的排版错误", "仅两家共享的一般文本相似", "仅两家共享的非模板文本重合"}:
         return "C"
     if finding.title in {"银行账号重合", "联系人电话重合", "邮箱重合", "法定代表人信息重合"}:
         return "A"
@@ -2145,6 +2170,10 @@ def _text_similarity_score(assessment: PairwiseAssessment) -> int:
         finding.weight
         for finding in assessment.findings
         if finding.title in {
+            "仅两家共享的排版错误",
+            "仅两家共享的编号错误",
+            "仅两家共享的字段错填",
+            "仅两家共享的逻辑矛盾表述",
             "仅两家共享的共同错误表述",
             "仅两家共享的罕见表达重合",
             "仅两家共享的一般文本相似",

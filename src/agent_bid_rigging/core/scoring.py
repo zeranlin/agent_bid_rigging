@@ -80,6 +80,12 @@ ERROR_LIKE_TOKENS = (
     "漏项",
     "错项",
 )
+TEXT_ERROR_TITLES = {
+    "formatting_error": "仅两家共享的排版错误",
+    "numbering_error": "仅两家共享的编号错误",
+    "field_misfill": "仅两家共享的字段错填",
+    "logic_conflict": "仅两家共享的逻辑矛盾表述",
+}
 RARE_EXPRESSION_TOKENS = (
     "api",
     "json",
@@ -319,37 +325,51 @@ def _pair_only_line_findings(
     if not raw_overlap:
         return []
 
-    error_lines = [line for line in raw_overlap if _is_shared_error_like_overlap(line, left, right)]
-    rare_lines = [
-        line
-        for line in raw_overlap
-        if line not in error_lines and _is_rare_expression_overlap(line, left, right)
-    ]
+    error_buckets: dict[str, list[str]] = {
+        "formatting_error": [],
+        "numbering_error": [],
+        "field_misfill": [],
+        "logic_conflict": [],
+    }
+    for line in raw_overlap:
+        category = _shared_error_category(line, left, right)
+        if category:
+            error_buckets[category].append(line)
+
+    if any(error_buckets.values()):
+        findings: list[PairwiseFinding] = []
+        weights = {
+            "formatting_error": 10,
+            "numbering_error": 18,
+            "field_misfill": 22,
+            "logic_conflict": 28,
+        }
+        for category in ("logic_conflict", "field_misfill", "numbering_error", "formatting_error"):
+            lines = error_buckets[category]
+            if not lines:
+                continue
+            findings.append(
+                PairwiseFinding(
+                    title=TEXT_ERROR_TITLES[category],
+                    weight=weights[category],
+                    evidence=[_format_overlap_evidence(line, left, right) for line in lines[:5]],
+                    evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in lines[:5]],
+                )
+            )
+        return findings
+
+    rare_lines = [line for line in raw_overlap if _is_rare_expression_overlap(line, left, right)]
     overlap = [
         line
         for line in raw_overlap
-        if line in error_lines or line in rare_lines or not _is_template_like_overlap(line, left, right)
+        if line in rare_lines or not _is_template_like_overlap(line, left, right)
     ]
     if not overlap:
         return []
 
-    general_lines = [
-        line
-        for line in overlap
-        if line not in error_lines and line not in rare_lines and _is_actionable_general_overlap(line)
-    ]
+    general_lines = [line for line in overlap if line not in rare_lines and _is_actionable_general_overlap(line)]
 
     findings: list[PairwiseFinding] = []
-    if error_lines:
-        weight = 28 if len(error_lines) >= 2 else 18
-        findings.append(
-            PairwiseFinding(
-                title="仅两家共享的共同错误表述",
-                weight=weight,
-                evidence=[_format_overlap_evidence(line, left, right) for line in error_lines[:5]],
-                evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in error_lines[:5]],
-            )
-        )
     if rare_lines:
         weight = 22 if len(rare_lines) >= 3 else 14
         findings.append(
@@ -668,17 +688,30 @@ def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts,
     return _refs_look_normative_like(left_refs) or _refs_look_normative_like(right_refs)
 
 
-def _is_shared_error_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
+def _shared_error_category(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> str | None:
     lowered = line.lower()
-    if any(token in lowered for token in ERROR_LIKE_TOKENS):
-        return True
-    if re.search(r"(序号|页码|编号).{0,8}(有误|错误|不一致|缺失|漏填|错填|作废)", line):
-        return True
+    if re.search(r"(逻辑|状态|时间|金额|附件|目录|前后).{0,8}(矛盾|冲突|不一致|不符)", line):
+        return "logic_conflict"
+    if any(token in lowered for token in ("矛盾", "冲突", "前后不符", "与附件不符", "与目录不符", "状态冲突", "时间冲突")):
+        return "logic_conflict"
+    if re.search(r"(序号|页码|编号|附件编号|目录编号).{0,8}(有误|错误|不一致|缺失|漏填|错填|重复|作废)", line):
+        return "numbering_error"
+    if re.search(r"(填写有误|错填|漏填|误写|误录|缺失|空白)", line):
+        return "field_misfill"
     left_refs = _candidate_overlap_refs(left).get(line, [])
     right_refs = _candidate_overlap_refs(right).get(line, [])
     if _refs_include_titles(left_refs, ("偏离", "应答", "响应")) and _refs_include_titles(right_refs, ("偏离", "应答", "响应")):
-        return any(token in lowered for token in ("不", "未", "负偏离", "缺失", "错误", "有误"))
-    return False
+        if any(token in lowered for token in ("不一致", "矛盾", "不符", "负偏离")):
+            return "logic_conflict"
+        if any(token in lowered for token in ("缺失", "错填", "漏填", "填写有误", "空白", "误写", "误录")):
+            return "field_misfill"
+    if _looks_formatting_error(line):
+        return "formatting_error"
+    if any(token in lowered for token in ("错别字", "笔误")):
+        return "formatting_error"
+    if any(token in lowered for token in ERROR_LIKE_TOKENS):
+        return "field_misfill"
+    return None
 
 
 def _is_rare_expression_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
@@ -722,6 +755,23 @@ def _is_actionable_general_overlap(line: str) -> bool:
     if len(re.findall(r"[\u4e00-\u9fff]{2,}", line)) < 3:
         return False
     return True
+
+
+def _looks_formatting_error(line: str) -> bool:
+    stripped = line.strip()
+    if len(stripped) < 10:
+        return False
+    if stripped.endswith(("，", "、", "；", "：", "(", "（", "/", "-")):
+        return True
+    if stripped.count("（") != stripped.count("）") or stripped.count("(") != stripped.count(")"):
+        return True
+    if re.search(r"[，。；：、]{2,}", stripped):
+        return True
+    if re.search(r"\s{2,}", line):
+        return True
+    if re.search(r"[\u4e00-\u9fff]{2,}\s+[，。；：、]", line):
+        return True
+    return False
 
 
 def _refs_look_template_like(refs: list[dict]) -> bool:
@@ -826,7 +876,15 @@ def _dimension_for_finding(title: str) -> str:
         "特殊计价说明重合",
     }:
         return "pricing_link"
-    if title in {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合", "仅两家共享的一般文本相似"} or "文本重合" in title:
+    if title in {
+        "仅两家共享的排版错误",
+        "仅两家共享的编号错误",
+        "仅两家共享的字段错填",
+        "仅两家共享的逻辑矛盾表述",
+        "仅两家共享的罕见表达重合",
+        "仅两家共享的一般文本相似",
+        "仅两家共享的共同错误表述",
+    } or "文本重合" in title:
         return "text_similarity"
     if title in {"文件完全一致", "文件高度同源", "文件指纹重合", "章节顺序高度同构", "章节顺序相似", "关键表格结构高度一致", "关键表格结构相似", "异常同构结构"}:
         return "file_homology"
@@ -850,8 +908,10 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "weak"
     if title in {"创建修改时间高度重合", "CA使用人重合", "终端/IP信息重合", "平台侧电子痕迹重合"}:
         return "medium"
-    if title == "仅两家共享的共同错误表述":
+    if title in {"仅两家共享的逻辑矛盾表述", "仅两家共享的字段错填", "仅两家共享的编号错误", "仅两家共享的共同错误表述"}:
         return "medium"
+    if title == "仅两家共享的排版错误":
+        return "weak"
     if title == "仅两家共享的罕见表达重合":
         return "medium"
     if title == "仅两家共享的一般文本相似":
