@@ -15,6 +15,7 @@ authors = [
 dependencies = [
   "click>=8.1,<9",
   "flask>=3.0,<4",
+  "markdown-it-py>=3.0,<4",
   "pypdf>=6.0,<7",
 ]
 

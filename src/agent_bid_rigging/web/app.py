@@ -405,11 +405,12 @@ RUN_TEMPLATE = """<!doctype html>
     .report-viewer h2:first-child,
     .report-viewer h3:first-child { margin-top: 0; }
     .report-viewer h1 {
-      font-size: 52px;
+      font-size: 44px;
       line-height: 1.18;
       text-align: center;
       margin-bottom: 1.1em;
       font-weight: 700;
+      letter-spacing: 0.02em;
     }
     .report-viewer h2 {
       font-size: 28px;
@@ -554,7 +555,7 @@ RUN_TEMPLATE = """<!doctype html>
         font-size: 15px;
       }
       .report-viewer h1 {
-        font-size: 38px;
+        font-size: 34px;
       }
     }
   </style>
@@ -1048,14 +1049,25 @@ def _render_markdown(text: str) -> str:
 
 
 def _normalize_report_markdown(text: str) -> str:
-    lines = text.splitlines()
+    lines = text.lstrip("\ufeff").splitlines()
     if not lines:
         return text
-    first_line = lines[0].strip()
-    if re.fullmatch(r"\*\*[^*]+\*\*", first_line):
-        title = first_line[2:-2].strip()
-        if title in {"围串标审查意见书", "围串标审查报告"}:
-            lines[0] = f"# {title}"
+    title_candidates = {"围串标审查意见书", "围串标审查报告"}
+    for index, raw_line in enumerate(lines[:3]):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            title = line[2:].strip()
+            if title in title_candidates:
+                lines[index] = f"# {title}"
+            break
+        if re.fullmatch(r"\*\*[^*]+\*\*", line):
+            title = line[2:-2].strip()
+            if title in title_candidates:
+                lines[index] = f"# {title}"
+                break
+        break
     return "\n".join(lines)
 
 
