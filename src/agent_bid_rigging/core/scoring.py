@@ -57,6 +57,20 @@ TEMPLATE_OVERLAP_PATTERNS = (
     "加入收藏",
     "立即下单",
 )
+ERROR_LIKE_TOKENS = (
+    "错误",
+    "有误",
+    "错填",
+    "漏填",
+    "缺失",
+    "不一致",
+    "不满足",
+    "未响应",
+    "负偏离",
+    "作废",
+    "已退回",
+    "空白",
+)
 TEMPLATE_COMPONENT_PATTERNS = (
     "项目实施方案",
     "质量保证及售后服务承诺",
@@ -230,27 +244,47 @@ def _pair_only_line_findings(
     if not overlap:
         return []
 
-    if len(overlap) >= 8:
-        weight = 30
-    elif len(overlap) >= 4:
-        weight = 20
-    else:
-        weight = 10
-
-    return [
-        PairwiseFinding(
-            title="仅两家共享的非模板文本重合",
-            weight=weight,
-            evidence=[
-                _format_overlap_evidence(line, left, right)
-                for line in overlap[:5]
-            ],
-            evidence_details=[
-                _build_overlap_evidence_detail(line, left, right)
-                for line in overlap[:5]
-            ],
-        )
+    error_lines = [line for line in overlap if _is_shared_error_like_overlap(line, left, right)]
+    rare_lines = [
+        line
+        for line in overlap
+        if line not in error_lines and _is_rare_expression_overlap(line, left, right)
     ]
+    general_lines = [line for line in overlap if line not in error_lines and line not in rare_lines]
+
+    findings: list[PairwiseFinding] = []
+    if error_lines:
+        weight = 28 if len(error_lines) >= 2 else 18
+        findings.append(
+            PairwiseFinding(
+                title="仅两家共享的共同错误表述",
+                weight=weight,
+                evidence=[_format_overlap_evidence(line, left, right) for line in error_lines[:5]],
+                evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in error_lines[:5]],
+            )
+        )
+    if rare_lines:
+        weight = 22 if len(rare_lines) >= 3 else 14
+        findings.append(
+            PairwiseFinding(
+                title="仅两家共享的罕见表达重合",
+                weight=weight,
+                evidence=[_format_overlap_evidence(line, left, right) for line in rare_lines[:5]],
+                evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in rare_lines[:5]],
+            )
+        )
+    if general_lines and not findings:
+        weight = 8 if len(general_lines) >= 4 else 4
+        findings.append(
+            PairwiseFinding(
+                title="仅两家共享的一般文本相似",
+                weight=weight,
+                evidence=[_format_overlap_evidence(line, left, right) for line in general_lines[:5]],
+                evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in general_lines[:5]],
+            )
+        )
+
+    return findings
 
 
 def _pricing_row_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
@@ -444,6 +478,29 @@ def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts,
     return _refs_look_normative_like(left_refs) or _refs_look_normative_like(right_refs)
 
 
+def _is_shared_error_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
+    lowered = line.lower()
+    if any(token in lowered for token in ERROR_LIKE_TOKENS):
+        return True
+    left_refs = _candidate_overlap_refs(left).get(line, [])
+    right_refs = _candidate_overlap_refs(right).get(line, [])
+    if _refs_include_titles(left_refs, ("偏离", "应答", "响应")) and _refs_include_titles(right_refs, ("偏离", "应答", "响应")):
+        return any(token in lowered for token in ("不", "未", "负偏离", "缺失", "错误", "有误"))
+    return False
+
+
+def _is_rare_expression_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
+    if len(line) < 14:
+        return False
+    if line not in _rare_lines(left) or line not in _rare_lines(right):
+        return False
+    if re.search(r"[A-Za-z0-9]", line) and re.search(r"[\u4e00-\u9fff]", line):
+        return True
+    if sum(1 for token in ("(", ")", "（", "）", "/", "%", "-", "_", ":", "：") if token in line) >= 2:
+        return True
+    return False
+
+
 def _refs_look_template_like(refs: list[dict]) -> bool:
     if not refs:
         return False
@@ -477,6 +534,16 @@ def _refs_look_normative_like(refs: list[dict]) -> bool:
                 "供应商应提交的相关资格证明材料",
             )
         ):
+            return True
+    return False
+
+
+def _refs_include_titles(refs: list[dict], keywords: tuple[str, ...]) -> bool:
+    for ref in refs:
+        title = str(ref.get("component_title") or "")
+        source_document = str(ref.get("source_document") or "")
+        corpus = f"{title} {source_document}"
+        if any(keyword in corpus for keyword in keywords):
             return True
     return False
 
@@ -536,7 +603,7 @@ def _dimension_for_finding(title: str) -> str:
         "特殊计价说明重合",
     }:
         return "pricing_link"
-    if "文本重合" in title:
+    if title in {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合", "仅两家共享的一般文本相似"} or "文本重合" in title:
         return "text_similarity"
     if title in {"文件完全一致", "文件高度同源", "文件指纹重合", "章节顺序高度同构", "章节顺序相似", "关键表格结构高度一致", "关键表格结构相似", "异常同构结构"}:
         return "file_homology"
@@ -557,6 +624,12 @@ def _tier_for_finding(title: str, weight: int) -> str:
     if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合", "授权范围重合"}:
         return "medium"
     if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似"}:
+        return "weak"
+    if title == "仅两家共享的共同错误表述":
+        return "medium"
+    if title == "仅两家共享的罕见表达重合":
+        return "medium"
+    if title == "仅两家共享的一般文本相似":
         return "weak"
     if "文本重合" in title:
         return "medium" if weight >= 20 else "weak"
@@ -596,6 +669,12 @@ def _candidate_overlap_refs(item: ExtractedSignals | SupplierFacts) -> dict[str,
     if isinstance(item, SupplierFacts):
         return item.candidate_overlap_refs
     return item.candidate_overlap_refs
+
+
+def _rare_lines(item: ExtractedSignals | SupplierFacts) -> set[str]:
+    if isinstance(item, SupplierFacts):
+        return set(item.rare_line_fingerprints.values())
+    return set(item.rare_line_fingerprints.values())
 
 
 def _build_overlap_evidence_detail(

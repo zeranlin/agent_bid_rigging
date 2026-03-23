@@ -403,6 +403,7 @@ def test_normative_response_sections_do_not_trigger_text_overlap_finding() -> No
     )
     assessment = assess_pairs([left, right])[0]
     assert all(finding.title != "仅两家共享的非模板文本重合" for finding in assessment.findings)
+    assert all(finding.title != "仅两家共享的一般文本相似" for finding in assessment.findings)
 
 
 def test_document_classifier_tags_known_document() -> None:
@@ -921,6 +922,55 @@ def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> No
     )
     assessment = assess_pairs([left, right])[0]
     assert not any(finding.title == "仅两家共享的非模板文本重合" for finding in assessment.findings)
+    assert not any(finding.title == "仅两家共享的一般文本相似" for finding in assessment.findings)
+
+
+def test_shared_error_like_text_is_prioritized_over_general_overlap() -> None:
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "商务应答\n接口响应状态码填写有误，导致结算流程不一致。\n其余内容略。",
+        )
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "商务应答\n接口响应状态码填写有误，导致结算流程不一致。\n其余内容略。",
+        )
+    )
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的共同错误表述" in titles
+    assert "仅两家共享的一般文本相似" not in titles
+    assert assessment.dimension_summary["text_similarity"]["tier"] == "medium"
+
+
+def test_shared_rare_expression_is_detected_as_text_signal() -> None:
+    line = "订单状态映射采用 API-v2/JSON 双轨校验并保留 7 天回滚窗口。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术说明\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术说明\n{line}\n其余内容略。"))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的罕见表达重合" in titles
+
+
+def test_general_text_similarity_does_not_form_actionable_clue_by_itself() -> None:
+    line = "该模块支持多角色协同处理并保留完整业务流转记录。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"说明\n背景描述A。\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"说明\n背景描述B。\n{line}\n补充说明。"))
+
+    assessment = assess_pairs([left, right])[0]
+    report = build_review_conclusion_table([assessment])
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的一般文本相似" in titles
+    assert report["suspicious_clues"] == []
 
 
 def load_document_from_text(name: str, role: str, text: str):

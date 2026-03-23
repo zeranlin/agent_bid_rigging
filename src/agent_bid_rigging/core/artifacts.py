@@ -869,6 +869,13 @@ def _build_structure_summary(
             points.append(f"{pair_label}关键表格结构高度一致，需结合文件指纹或章节顺序继续复核。")
         elif "关键表格结构相似" in title_set:
             points.append(f"{pair_label}关键表格结构存在相似性，暂作为结构层面的辅助线索。")
+        text_titles = set(row.get("dimension_summary", {}).get("text_similarity", {}).get("finding_titles", []))
+        if "仅两家共享的共同错误表述" in text_titles:
+            points.append(f"{pair_label}出现共同错误或异常表述，需结合主体、报价和原始底稿进一步复核。")
+        elif "仅两家共享的罕见表达重合" in text_titles:
+            points.append(f"{pair_label}存在罕见表达重合，具有一定异常性，建议继续核对原始方案来源。")
+        elif "仅两家共享的一般文本相似" in text_titles:
+            points.append(f"{pair_label}存在一般相似文本片段，目前更倾向于辅助性线索。")
     for row in sorted(section_similarity_table, key=lambda item: item["similarity"], reverse=True)[:4]:
         if row["similarity"] < 0.75:
             continue
@@ -1003,6 +1010,14 @@ def _assessment_has_actionable_clues(assessment: PairwiseAssessment) -> bool:
     }
     if titles <= non_actionable_structure_titles:
         return False
+    text_titles = {
+        "仅两家共享的共同错误表述",
+        "仅两家共享的罕见表达重合",
+        "仅两家共享的一般文本相似",
+        "仅两家共享的非模板文本重合",
+    }
+    if titles <= text_titles:
+        return bool(titles & {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合", "仅两家共享的非模板文本重合"})
     return True
 
 
@@ -1026,6 +1041,10 @@ def _risk_row_has_actionable_clues(row: dict) -> bool:
             "关键表格结构高度一致",
             "关键表格结构相似",
         }:
+            return False
+    if matched_dimensions == {"text_similarity"}:
+        text_titles = set(summary.get("text_similarity", {}).get("finding_titles", []))
+        if text_titles <= {"仅两家共享的一般文本相似"}:
             return False
     return True
 
@@ -1203,6 +1222,12 @@ def _evidence_reason_to_plain_text(reason: str) -> str:
 
 
 def _plain_text_overlap_title(title: str) -> str:
+    if title == "仅两家共享的共同错误表述":
+        return "两家投标文件存在共同错误或异常表述"
+    if title == "仅两家共享的罕见表达重合":
+        return "两家投标文件存在罕见表达重合"
+    if title == "仅两家共享的一般文本相似":
+        return "两家投标文件存在一般相似文本片段"
     if title == "仅两家共享的非模板文本重合":
         return "两家投标文件存在相似文本片段"
     return title
@@ -1747,12 +1772,14 @@ def _extract_named_values(text: str, field_names: tuple[str, ...]) -> list[str]:
 
 
 def _evidence_grade(finding) -> str:
+    if finding.title in {"仅两家共享的共同错误表述", "仅两家共享的罕见表达重合"}:
+        return "B"
+    if finding.title in {"仅两家共享的一般文本相似", "仅两家共享的非模板文本重合"}:
+        return "C"
     if finding.title in {"银行账号重合", "联系人电话重合", "邮箱重合", "法定代表人信息重合"}:
         return "A"
     if "报价" in finding.title or "共享" in finding.title or finding.title in {"特殊计价说明重合", "授权对象重合", "授权范围重合"}:
         return "B"
-    if "文本重合" in finding.title:
-        return "C"
     return "D"
 
 
@@ -1796,10 +1823,18 @@ def _entity_score(assessment: PairwiseAssessment) -> int:
 
 
 def _text_similarity_score(assessment: PairwiseAssessment) -> int:
-    for finding in assessment.findings:
-        if "文本重合" in finding.title:
-            return finding.weight
-    return 0
+    scores = [
+        finding.weight
+        for finding in assessment.findings
+        if finding.title in {
+            "仅两家共享的共同错误表述",
+            "仅两家共享的罕见表达重合",
+            "仅两家共享的一般文本相似",
+            "仅两家共享的非模板文本重合",
+        }
+        or "文本重合" in finding.title
+    ]
+    return max(scores) if scores else 0
 
 
 def _finding_weight(assessment: PairwiseAssessment, titles: set[str]) -> int:
