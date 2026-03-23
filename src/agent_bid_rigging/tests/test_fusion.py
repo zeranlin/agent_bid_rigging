@@ -251,6 +251,32 @@ def test_build_review_facts_carries_timeline_created_and_modified_times() -> Non
     assert supplier.timeline_modified_times == ["2026-03-20T10:05:00"]
 
 
+def test_build_review_facts_carries_platform_side_timeline_fields() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    signal.document.metadata["components"] = [
+        {
+            "display_name": "开标一览表.pdf",
+            "relative_path": "开标一览表.pdf",
+            "sha256": "abc123",
+            "size_bytes": 128,
+            "upload_at": "2026-03-20T10:08:00",
+            "ca_user": "张三",
+            "terminal_id": "terminal-1",
+            "client_ip": "10.10.0.8",
+        }
+    ]
+
+    review_facts = build_review_facts(tender, [signal], [], [])
+    supplier = review_facts.suppliers[0]
+
+    assert supplier.timeline_uploaded_times == ["2026-03-20T10:08:00"]
+    assert supplier.timeline_ca_users == ["张三"]
+    assert supplier.timeline_terminal_ids == ["terminal-1"]
+    assert supplier.timeline_ip_addresses == ["10.10.0.8"]
+    assert supplier.platform_trace_lines == ["upload=2026-03-20T10:08:00；ca=张三；terminal=terminal-1；ip=10.10.0.8"]
+
+
 def test_build_review_facts_normalizes_person_names_and_addresses() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
     signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))

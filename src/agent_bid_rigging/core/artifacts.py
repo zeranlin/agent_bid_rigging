@@ -779,6 +779,11 @@ def _build_supplier_profiles(
                 "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
                 "created_times": timeline_map.get(supplier, {}).get("created_times", [])[:20],
                 "modified_times": timeline_map.get(supplier, {}).get("modified_times", [])[:20],
+                "uploaded_times": timeline_map.get(supplier, {}).get("uploaded_times", [])[:20],
+                "ca_users": timeline_map.get(supplier, {}).get("ca_users", [])[:10],
+                "terminal_ids": timeline_map.get(supplier, {}).get("terminal_ids", [])[:10],
+                "ip_addresses": timeline_map.get(supplier, {}).get("ip_addresses", [])[:10],
+                "platform_trace_count": timeline_map.get(supplier, {}).get("platform_trace_count", 0),
                 "fingerprint_count": timeline_map.get(supplier, {}).get("fingerprint_count", 0),
                 "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
             }
@@ -824,6 +829,11 @@ def _build_supplier_profiles_from_facts(
                 "authorization_summary": auth_map.get(supplier.supplier, {}).get("summary", "未发现明确授权链线索"),
                 "created_times": timeline_map.get(supplier.supplier, {}).get("created_times", [])[:20],
                 "modified_times": timeline_map.get(supplier.supplier, {}).get("modified_times", [])[:20],
+                "uploaded_times": timeline_map.get(supplier.supplier, {}).get("uploaded_times", [])[:20],
+                "ca_users": timeline_map.get(supplier.supplier, {}).get("ca_users", [])[:10],
+                "terminal_ids": timeline_map.get(supplier.supplier, {}).get("terminal_ids", [])[:10],
+                "ip_addresses": timeline_map.get(supplier.supplier, {}).get("ip_addresses", [])[:10],
+                "platform_trace_count": timeline_map.get(supplier.supplier, {}).get("platform_trace_count", 0),
                 "fingerprint_count": timeline_map.get(supplier.supplier, {}).get("fingerprint_count", 0),
                 "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
             }
@@ -1080,12 +1090,14 @@ def _authorization_titles_form_actionable_combo(titles: set[str]) -> bool:
 
 def _build_timeline_points(profiles: list[dict]) -> list[str]:
     return [
-        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}；创建时间提取 {len(profile.get('created_times', []))} 条，修改时间提取 {len(profile.get('modified_times', []))} 条，文件指纹 {profile.get('fingerprint_count', 0)} 项。"
+        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}；创建时间提取 {len(profile.get('created_times', []))} 条，修改时间提取 {len(profile.get('modified_times', []))} 条，上传时间提取 {len(profile.get('uploaded_times', []))} 条，CA使用人 {len(profile.get('ca_users', []))} 项，终端/设备标识 {len(profile.get('terminal_ids', []))} 项，IP 地址 {len(profile.get('ip_addresses', []))} 项，平台侧痕迹 {profile.get('platform_trace_count', 0)} 条，文件指纹 {profile.get('fingerprint_count', 0)} 项。"
         for profile in profiles
     ] or ["当前未形成稳定的时间特征分析结果。"]
 
 
 def _build_timeline_opinion(profiles: list[dict]) -> str:
+    if any(profile.get("platform_trace_count", 0) or profile.get("ca_users") or profile.get("terminal_ids") or profile.get("ip_addresses") for profile in profiles):
+        return "现有材料已提取到部分平台侧电子痕迹或终端线索，应优先围绕上传时间、CA使用人、终端标识和IP地址开展交叉核验；如出现重合，可显著提升时间与电子痕迹维度的判断价值。"
     if any(profile["timeline_summary"] in {"创建、修改时间均存在集中生成迹象", "修改时间存在集中生成迹象"} for profile in profiles):
         return "部分供应商文件在创建时间或修改时间上呈现集中生成特征，可作为时间与电子痕迹维度的辅助线索；仍需结合文件指纹、平台日志和原始元数据继续核实。"
     if all(profile["timeline_summary"] == "无组件级时间信息" for profile in profiles):
@@ -1686,6 +1698,11 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
             components = supplier.document.metadata.get("components", [])
             created_times = supplier.timeline_created_times[:20]
             modified_times = supplier.timeline_modified_times[:20]
+            uploaded_times = supplier.timeline_uploaded_times[:20]
+            ca_users = supplier.timeline_ca_users[:10]
+            terminal_ids = supplier.timeline_terminal_ids[:10]
+            ip_addresses = supplier.timeline_ip_addresses[:10]
+            platform_trace_count = len(supplier.platform_trace_lines)
             fingerprint_count = len({row.get("sha256") for row in supplier.file_fingerprints if row.get("sha256")})
             rows.append(
                 {
@@ -1693,8 +1710,16 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
                     "component_count": len(components) or 1,
                     "created_times": created_times,
                     "modified_times": modified_times,
+                    "uploaded_times": uploaded_times,
+                    "ca_users": ca_users,
+                    "terminal_ids": terminal_ids,
+                    "ip_addresses": ip_addresses,
+                    "platform_trace_count": platform_trace_count,
                     "fingerprint_count": fingerprint_count,
                     "summary": (
+                        "发现平台侧电子痕迹"
+                        if uploaded_times or ca_users or terminal_ids or ip_addresses or platform_trace_count
+                        else
                         "创建、修改时间均存在集中生成迹象"
                         if created_times
                         and modified_times
@@ -1717,20 +1742,51 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
                     "created_times": [],
                     "modified_times": [],
                     "fingerprint_count": 1,
-                    "summary": "无组件级时间信息",
-                }
-            )
+                "summary": "无组件级时间信息",
+            }
+        )
             continue
         created_times = [component.get("created_at") for component in components if component.get("created_at")]
         modified_times = [component.get("modified_at") for component in components if component.get("modified_at")]
+        uploaded_times = [normalize_text_field(component.get("upload_at")) for component in components if component.get("upload_at")]
+        ca_users = [normalize_text_field(component.get("ca_user")) for component in components if component.get("ca_user")]
+        terminal_ids = [
+            normalize_text_field(component.get("terminal_id") or component.get("client_id") or component.get("device_id"))
+            for component in components
+            if component.get("terminal_id") or component.get("client_id") or component.get("device_id")
+        ]
+        ip_addresses = [
+            normalize_text_field(component.get("client_ip") or component.get("upload_ip") or component.get("ip"))
+            for component in components
+            if component.get("client_ip") or component.get("upload_ip") or component.get("ip")
+        ]
         rows.append(
             {
                 "supplier": signal.document.name,
                 "component_count": len(components),
                 "created_times": created_times[:20],
                 "modified_times": modified_times[:20],
+                "uploaded_times": uploaded_times[:20],
+                "ca_users": ca_users[:10],
+                "terminal_ids": terminal_ids[:10],
+                "ip_addresses": ip_addresses[:10],
+                "platform_trace_count": sum(
+                    1
+                    for component in components
+                    if component.get("upload_at")
+                    or component.get("ca_user")
+                    or component.get("terminal_id")
+                    or component.get("client_id")
+                    or component.get("device_id")
+                    or component.get("client_ip")
+                    or component.get("upload_ip")
+                    or component.get("ip")
+                ),
                 "fingerprint_count": len({component.get("sha256") for component in components if component.get("sha256")}),
                 "summary": (
+                    "发现平台侧电子痕迹"
+                    if uploaded_times or ca_users or terminal_ids or ip_addresses
+                    else
                     "创建、修改时间均存在集中生成迹象"
                     if created_times
                     and modified_times
@@ -1955,14 +2011,34 @@ def _timeline_indicator(left: dict, right: dict) -> str:
     right_created = set(right.get("created_times", []))
     left_times = set(left.get("modified_times", []))
     right_times = set(right.get("modified_times", []))
+    left_uploaded = set(left.get("uploaded_times", []))
+    right_uploaded = set(right.get("uploaded_times", []))
+    left_ca = set(left.get("ca_users", []))
+    right_ca = set(right.get("ca_users", []))
+    left_terminal = set(left.get("terminal_ids", []))
+    right_terminal = set(right.get("terminal_ids", []))
+    left_ip = set(left.get("ip_addresses", []))
+    right_ip = set(right.get("ip_addresses", []))
     fingerprint_count = min(int(left.get("fingerprint_count", 0) or 0), int(right.get("fingerprint_count", 0) or 0))
     shared_created = left_created & right_created
     shared_modified = left_times & right_times
+    shared_uploaded = left_uploaded & right_uploaded
+    shared_ca = left_ca & right_ca
+    shared_terminal = left_terminal & right_terminal
+    shared_ip = left_ip & right_ip
     parts: list[str] = []
     if shared_created:
         parts.append(f"created:{len(shared_created)}")
     if shared_modified:
         parts.append(f"modified:{len(shared_modified)}")
+    if shared_uploaded:
+        parts.append(f"uploaded:{len(shared_uploaded)}")
+    if shared_ca:
+        parts.append(f"ca:{len(shared_ca)}")
+    if shared_terminal:
+        parts.append(f"terminal:{len(shared_terminal)}")
+    if shared_ip:
+        parts.append(f"ip:{len(shared_ip)}")
     if fingerprint_count:
         parts.append(f"fingerprints:{fingerprint_count}")
     if parts:

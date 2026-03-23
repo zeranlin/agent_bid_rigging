@@ -856,6 +856,28 @@ def test_timeline_trace_detects_shared_created_and_modified_times() -> None:
     assert assessment.dimension_summary["timeline_trace"]["tier"] == "medium"
 
 
+def test_timeline_trace_detects_platform_side_signals() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    left.document.metadata["components"] = [
+        {"display_name": "A.pdf", "relative_path": "A.pdf", "sha256": "ha", "upload_at": "2026-03-20T10:08:00", "ca_user": "张三", "terminal_id": "terminal-1", "client_ip": "10.10.0.8"}
+    ]
+    right.document.metadata["components"] = [
+        {"display_name": "B.pdf", "relative_path": "B.pdf", "sha256": "hb", "upload_at": "2026-03-20T10:08:00", "ca_user": "张三", "terminal_id": "terminal-1", "client_ip": "10.10.0.8"}
+    ]
+    review_facts = build_review_facts(tender, [left, right], [], [])
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "上传时间高度重合" in titles
+    assert "CA使用人重合" in titles
+    assert "终端/IP信息重合" in titles
+    assert "平台侧电子痕迹重合" in titles
+    assert assessment.dimension_summary["timeline_trace"]["matched"] is True
+
+
 def test_timeline_table_and_report_include_created_modified_and_fingerprint_support() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
     left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
@@ -877,6 +899,34 @@ def test_timeline_table_and_report_include_created_modified_and_fingerprint_supp
     assert "修改时间提取 1 条" in points[0]
     assert "文件指纹" in points[0]
     assert "时间与电子痕迹" in opinion or "创建时间" in opinion
+
+
+def test_timeline_table_and_report_include_platform_side_fields() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    left.document.metadata["components"] = [
+        {"display_name": "A.pdf", "relative_path": "A.pdf", "sha256": "ha", "created_at": "2026-03-20T10:00:00", "modified_at": "2026-03-20T10:05:00", "upload_at": "2026-03-20T10:08:00", "ca_user": "张三", "terminal_id": "terminal-1", "client_ip": "10.10.0.8"}
+    ]
+    review_facts = build_review_facts(tender, [left], [], [])
+    timeline_table = build_timeline_table(review_facts)
+    profiles = _build_supplier_profiles_from_facts(review_facts, [], [], timeline_table)
+
+    assert timeline_table[0]["uploaded_times"] == ["2026-03-20T10:08:00"]
+    assert timeline_table[0]["ca_users"] == ["张三"]
+    assert timeline_table[0]["terminal_ids"] == ["terminal-1"]
+    assert timeline_table[0]["ip_addresses"] == ["10.10.0.8"]
+    assert timeline_table[0]["platform_trace_count"] == 1
+    assert timeline_table[0]["summary"] == "发现平台侧电子痕迹"
+
+    points = _build_timeline_points(profiles)
+    opinion = _build_timeline_opinion(profiles)
+
+    assert "上传时间提取 1 条" in points[0]
+    assert "CA使用人 1 项" in points[0]
+    assert "终端/设备标识 1 项" in points[0]
+    assert "IP 地址 1 项" in points[0]
+    assert "平台侧痕迹 1 条" in points[0]
+    assert "平台侧电子痕迹" in opinion
 
 
 def test_formal_report_explains_normal_vs_abnormal_structure_homology() -> None:
@@ -1083,6 +1133,17 @@ def test_shared_rare_expression_is_detected_as_text_signal() -> None:
     titles = {finding.title for finding in assessment.findings}
 
     assert "仅两家共享的罕见表达重合" in titles
+
+
+def test_shared_numbering_error_is_detected_as_error_like_text_signal() -> None:
+    line = "序号 3 页码填写有误，导致接口编号与附件目录不一致。"
+    left = extract_signals(load_document_from_text("alpha", "bid", f"技术应答\n{line}\n其余内容略。"))
+    right = extract_signals(load_document_from_text("beta", "bid", f"技术应答\n{line}\n其余内容略。"))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的共同错误表述" in titles
 
 
 def test_general_text_similarity_does_not_form_actionable_clue_by_itself() -> None:

@@ -70,6 +70,33 @@ ERROR_LIKE_TOKENS = (
     "作废",
     "已退回",
     "空白",
+    "错别字",
+    "笔误",
+    "误写",
+    "误录",
+    "错漏",
+    "漏页",
+    "缺页",
+    "漏项",
+    "错项",
+)
+RARE_EXPRESSION_TOKENS = (
+    "api",
+    "json",
+    "xml",
+    "token",
+    "sku",
+    "ca",
+    "ip",
+    "md5",
+    "sha",
+    "v1",
+    "v2",
+    "v3",
+    "回滚窗口",
+    "双轨校验",
+    "幂等",
+    "mapping",
 )
 TEMPLATE_COMPONENT_PATTERNS = (
     "项目实施方案",
@@ -520,6 +547,52 @@ def _timeline_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedS
                 ],
             )
         )
+
+    shared_uploaded = sorted(set(_timeline_uploaded_times(left)) & set(_timeline_uploaded_times(right)))
+    if shared_uploaded:
+        findings.append(
+            PairwiseFinding(
+                title="上传时间高度重合",
+                weight=8,
+                evidence=[f"共享上传时间数: {len(shared_uploaded)}"],
+            )
+        )
+
+    shared_ca_users = sorted(set(_timeline_ca_users(left)) & set(_timeline_ca_users(right)))
+    if shared_ca_users:
+        findings.append(
+            PairwiseFinding(
+                title="CA使用人重合",
+                weight=16,
+                evidence=[f"共享CA使用人: {value}" for value in shared_ca_users[:5]],
+            )
+        )
+
+    shared_terminals = sorted(set(_timeline_terminal_ids(left)) & set(_timeline_terminal_ids(right)))
+    shared_ips = sorted(set(_timeline_ip_addresses(left)) & set(_timeline_ip_addresses(right)))
+    if shared_terminals or shared_ips:
+        evidence: list[str] = []
+        if shared_terminals:
+            evidence.extend(f"共享终端标识: {value}" for value in shared_terminals[:5])
+        if shared_ips:
+            evidence.extend(f"共享IP地址: {value}" for value in shared_ips[:5])
+        findings.append(
+            PairwiseFinding(
+                title="终端/IP信息重合",
+                weight=18 if shared_terminals and shared_ips else 12,
+                evidence=evidence,
+            )
+        )
+
+    shared_platform_traces = sorted(set(_platform_trace_lines(left)) & set(_platform_trace_lines(right)))
+    if shared_platform_traces:
+        findings.append(
+            PairwiseFinding(
+                title="平台侧电子痕迹重合",
+                weight=20,
+                evidence=[f"共享平台侧痕迹: {value}" for value in shared_platform_traces[:5]],
+            )
+        )
     return findings
 
 
@@ -537,6 +610,8 @@ def _is_shared_error_like_overlap(line: str, left: ExtractedSignals | SupplierFa
     lowered = line.lower()
     if any(token in lowered for token in ERROR_LIKE_TOKENS):
         return True
+    if re.search(r"(序号|页码|编号).{0,8}(有误|错误|不一致|缺失|漏填|错填|作废)", line):
+        return True
     left_refs = _candidate_overlap_refs(left).get(line, [])
     right_refs = _candidate_overlap_refs(right).get(line, [])
     if _refs_include_titles(left_refs, ("偏离", "应答", "响应")) and _refs_include_titles(right_refs, ("偏离", "应答", "响应")):
@@ -549,9 +624,14 @@ def _is_rare_expression_overlap(line: str, left: ExtractedSignals | SupplierFact
         return False
     if line not in _rare_lines(left) or line not in _rare_lines(right):
         return False
+    lowered = line.lower()
+    if any(token in lowered for token in RARE_EXPRESSION_TOKENS):
+        return True
     if re.search(r"[A-Za-z0-9]", line) and re.search(r"[\u4e00-\u9fff]", line):
         return True
     if sum(1 for token in ("(", ")", "（", "）", "/", "%", "-", "_", ":", "：") if token in line) >= 2:
+        return True
+    if len(re.findall(r"[A-Za-z]{2,}|\d{2,}", line)) >= 2:
         return True
     return False
 
@@ -664,7 +744,7 @@ def _dimension_for_finding(title: str) -> str:
         return "file_homology"
     if title in {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合", "授权对象重合", "授权范围重合"}:
         return "authorization_chain"
-    if title in {"时间轨迹异常接近", "创建修改时间高度重合"}:
+    if title in {"时间轨迹异常接近", "创建修改时间高度重合", "上传时间高度重合", "CA使用人重合", "终端/IP信息重合", "平台侧电子痕迹重合"}:
         return "timeline_trace"
     return "text_similarity"
 
@@ -678,9 +758,9 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "medium"
     if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合", "授权范围重合"}:
         return "medium"
-    if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似", "时间轨迹异常接近"}:
+    if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似", "时间轨迹异常接近", "上传时间高度重合"}:
         return "weak"
-    if title in {"创建修改时间高度重合"}:
+    if title in {"创建修改时间高度重合", "CA使用人重合", "终端/IP信息重合", "平台侧电子痕迹重合"}:
         return "medium"
     if title == "仅两家共享的共同错误表述":
         return "medium"
@@ -849,6 +929,68 @@ def _timeline_modified_times(item: ExtractedSignals | SupplierFacts) -> list[str
         for component in item.document.metadata.get("components", [])
         if component.get("modified_at")
     ]
+
+
+def _timeline_uploaded_times(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_uploaded_times)
+    return [
+        normalize_text_field(component.get("upload_at"))
+        for component in item.document.metadata.get("components", [])
+        if component.get("upload_at")
+    ]
+
+
+def _timeline_ca_users(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_ca_users)
+    return [
+        normalize_text_field(component.get("ca_user"))
+        for component in item.document.metadata.get("components", [])
+        if component.get("ca_user")
+    ]
+
+
+def _timeline_terminal_ids(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_terminal_ids)
+    values: list[str] = []
+    for component in item.document.metadata.get("components", []):
+        value = normalize_text_field(component.get("terminal_id") or component.get("client_id") or component.get("device_id"))
+        if value:
+            values.append(value)
+    return values
+
+
+def _timeline_ip_addresses(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.timeline_ip_addresses)
+    values: list[str] = []
+    for component in item.document.metadata.get("components", []):
+        value = normalize_text_field(component.get("client_ip") or component.get("upload_ip") or component.get("ip"))
+        if value:
+            values.append(value)
+    return values
+
+
+def _platform_trace_lines(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.platform_trace_lines)
+    lines: list[str] = []
+    for component in item.document.metadata.get("components", []):
+        parts: list[str] = []
+        for value in (
+            component.get("upload_at"),
+            component.get("ca_user"),
+            component.get("terminal_id") or component.get("client_id") or component.get("device_id"),
+            component.get("client_ip") or component.get("upload_ip") or component.get("ip"),
+        ):
+            normalized = normalize_text_field(value)
+            if normalized:
+                parts.append(normalized)
+        if parts:
+            lines.append("｜".join(parts))
+    return lines
 
 
 def _normalize_address(value: str) -> str:

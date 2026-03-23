@@ -130,6 +130,7 @@ def _load_collection(name: str, role: str, root: Path, source_type: str) -> Load
                 "title": title,
                 "size_bytes": path.stat().st_size,
                 "sha256": _sha256_bytes(path.read_bytes()),
+                "created_at": _safe_iso_ctime(path),
                 "modified_at": _safe_iso_mtime(path),
             }
         )
@@ -283,6 +284,10 @@ def _sha256_bytes(payload: bytes) -> str:
 
 def _safe_iso_mtime(path: Path) -> str:
     return str(path.stat().st_mtime)
+
+
+def _safe_iso_ctime(path: Path) -> str:
+    return str(path.stat().st_ctime)
 
 
 def _build_line_references(

@@ -404,6 +404,11 @@ def _build_supplier_facts(
         pricing_rows=[],
         timeline_created_times=_extract_created_times(signal.document.metadata.get("components", [])),
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
+        timeline_uploaded_times=_extract_component_field(signal.document.metadata.get("components", []), "upload_at"),
+        timeline_ca_users=_extract_component_field(signal.document.metadata.get("components", []), "ca_user"),
+        timeline_terminal_ids=_extract_component_field(signal.document.metadata.get("components", []), "terminal_id", "client_id", "device_id"),
+        timeline_ip_addresses=_extract_component_field(signal.document.metadata.get("components", []), "client_ip", "upload_ip", "ip"),
+        platform_trace_lines=_extract_platform_trace_lines(signal.document.metadata.get("components", [])),
         file_fingerprints=_build_file_fingerprints(signal),
         section_order_profile=_build_section_order_profile(supplier_section_rows),
         table_structure_profiles=_build_table_structure_profiles(supplier_table_rows),
@@ -1054,6 +1059,39 @@ def _extract_created_times(components: list[dict]) -> list[str]:
         for component in components
         if component.get("created_at")
     ]
+
+
+def _extract_component_field(components: list[dict], *keys: str) -> list[str]:
+    values: list[str] = []
+    for component in components:
+        for key in keys:
+            value = normalize_text_field(component.get(key))
+            if value and value not in values:
+                values.append(value)
+    return values
+
+
+def _extract_platform_trace_lines(components: list[dict]) -> list[str]:
+    lines: list[str] = []
+    for component in components:
+        parts: list[str] = []
+        upload_time = normalize_text_field(component.get("upload_at"))
+        ca_user = normalize_text_field(component.get("ca_user"))
+        terminal_id = normalize_text_field(component.get("terminal_id") or component.get("client_id") or component.get("device_id"))
+        ip_address = normalize_text_field(component.get("client_ip") or component.get("upload_ip") or component.get("ip"))
+        if upload_time:
+            parts.append(f"upload={upload_time}")
+        if ca_user:
+            parts.append(f"ca={ca_user}")
+        if terminal_id:
+            parts.append(f"terminal={terminal_id}")
+        if ip_address:
+            parts.append(f"ip={ip_address}")
+        if parts:
+            line = "；".join(parts)
+            if line not in lines:
+                lines.append(line)
+    return lines
 
 
 def _extract_company_name_from_text(text: str) -> str | None:
