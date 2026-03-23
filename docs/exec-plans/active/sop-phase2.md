@@ -1,17 +1,17 @@
-# SOP Phase 2 Plan
+# SOP 第二阶段计划
 
-## Objective
+## 目标
 
-Implement the specialized analysis chains required by the SOP:
+实现 SOP 要求的专项分析链：
 
-- structure similarity
-- file fingerprinting and duplicate detection
-- text similarity
-- shared error detection
-- authorization and license summaries
-- timeline extraction
+- 结构相似性
+- 文件指纹与重复检测
+- 文本相似
+- 共同错误检测
+- 授权与资质摘要
+- 时间线抽取
 
-## Deliverables
+## 交付物
 
 - `structure_similarity_table.json`
 - `file_fingerprint_table.json`
@@ -22,8 +22,8 @@ Implement the specialized analysis chains required by the SOP:
 - `license_match_table.json`
 - `timeline_table.json`
 
-## Exit Criteria
+## 退出标准
 
-- every run emits the phase-2 tables
-- tests verify the tables exist and contain non-empty rows where expected
-- no regression to phase-1 outputs
+- 每次运行都产出第二阶段表
+- 测试验证表存在，并在应有场景下包含非空行
+- 不回归第一阶段输出

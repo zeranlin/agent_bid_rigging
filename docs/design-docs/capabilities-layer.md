@@ -1,47 +1,47 @@
-# Capabilities Layer
+# 能力层设计
 
-## Purpose
+## 目的
 
-As the repository grows beyond plain-text document parsing, we need a place for reusable atomic abilities that are not themselves procurement-review logic.
+随着仓库能力超出纯文本解析，我们需要一个位置来放置那些可复用的原子能力，而这些能力本身不应直接承载采购审查判断逻辑。
 
-`capabilities/` is that layer.
+`capabilities/` 就是这层。
 
-## What belongs here
+## 哪些内容属于这里
 
 - OCR
-- image understanding
-- table extraction
-- PDF and Office metadata extraction
-- signature and stamp parsing
-- page-type and document-type classification
+- 图像理解
+- 表格抽取
+- PDF 与 Office 元数据提取
+- 签名与印章解析
+- 页面类型与文档类型分类
 
-## What does not belong here
+## 哪些内容不属于这里
 
-- supplier pair scoring
-- anti-collusion evidence grading
-- procurement-domain report writing
-- risk conclusion logic
+- 投标人两两评分
+- 围串标证据分级
+- 采购领域报告写作
+- 风险结论逻辑
 
-Those remain in `core/`.
+这些逻辑仍然保留在 `core/`。
 
-## Contract with core
+## 与 core 的契约
 
-`capabilities/` produces structured facts plus evidence and warnings.
-`core/` consumes those facts, weighs them against procurement-domain rules, and decides what matters.
+`capabilities/` 负责产出结构化事实，以及证据和告警。  
+`core/` 消费这些事实，并结合采购审查规则判断哪些信息真正重要。
 
-This keeps the repository extensible:
+这样仓库就保持了可扩展性：
 
-- we can swap OCR backends without rewriting the scoring engine
-- we can test vision capabilities without touching reporting logic
-- we can reuse atomic abilities in future review products beyond bid-rigging
+- 我们可以替换 OCR 后端，而不用重写评分引擎
+- 我们可以测试视觉能力，而不需要改报告逻辑
+- 我们可以把这些原子能力复用到围串标之外的其他审查产品里
 
-## Layer map
+## 分层关系
 
-1. `ingest` or loader code obtains source files and extracted pages.
-2. `capabilities/` turns those sources into structured technical outputs.
-3. `core/` turns technical outputs into business judgments.
-4. `cli.py` and `web/` present the results to users.
+1. `ingest` 或 loader 代码获取源文件与抽取页面。
+2. `capabilities/` 把这些源材料转成结构化技术输出。
+3. `core/` 把技术输出转成业务判断。
+4. `cli.py` 与 `web/` 把结果展示给用户。
 
-## First practical use
+## 第一批实际用途
 
-The first major consumer of this layer is expected to be OCR for scanned procurement packages and embedded images, likely backed by the local multimodal model already used in the environment.
+这层的首个主要消费场景预计是采购扫描件和嵌入图片的 OCR，大概率使用当前环境中已有的本地多模态模型。

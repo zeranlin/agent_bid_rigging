@@ -1,22 +1,22 @@
-# SOP Phase 3 Plan
+# SOP 第三阶段计划
 
-## Objective
+## 目标
 
-Close the SOP loop with:
+完成 SOP 闭环：
 
-- evidence grading
-- risk scoring
-- SOP-aligned formal report
+- 证据分级
+- 风险评分
+- 与 SOP 对齐的正式报告
 
-## Deliverables
+## 交付物
 
 - `evidence_grade_table.json`
 - `risk_score_table.json`
 - `formal_report.json`
 - `formal_report.md`
 
-## Exit Criteria
+## 退出标准
 
-- conclusions are clearly split into facts, suspicious clues, exclusionary factors, and review opinion
-- every high-level conclusion traces back to evidence rows
-- phase-3 outputs are emitted in every run
+- 结论明确区分事实、可疑线索、排除因素和审查意见
+- 每个高层结论都能追溯到证据行
+- 每次运行都产出第三阶段输出

@@ -1,4 +1,4 @@
-# Design Docs
+# 设计文档索引
 
 - [core-beliefs.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/design-docs/core-beliefs.md)
 - [capabilities-layer.md](https://github.com/zeranlin/agent_bid_rigging/blob/main/docs/design-docs/capabilities-layer.md)

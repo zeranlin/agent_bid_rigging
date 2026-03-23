@@ -1,33 +1,33 @@
-# Capabilities Layer
+# 能力层说明
 
-`capabilities/` stores atomic, reusable abilities that are not specific to bid-rigging judgment itself.
+`capabilities/` 存放与围串标业务判断本身解耦、可复用的原子能力。
 
-Examples:
+例如：
 
-- OCR for scanned PDFs and embedded images
-- image classification and document-page description
-- metadata extraction from PDF or Office files
-- table extraction and normalization
-- document or page-type classification
+- 扫描 PDF 与嵌入图片的 OCR
+- 图像分类与页面描述
+- PDF 或 Office 文件的元数据提取
+- 表格抽取与标准化
+- 文档或页面类型分类
 
-## Boundary
+## 边界定义
 
-- `capabilities/` turns raw material into structured facts.
-- `core/` turns structured facts into procurement-review judgments.
-- `web/` and `cli.py` expose those workflows to humans and automation.
+- `capabilities/` 把原始材料转成结构化事实。
+- `core/` 把结构化事实转成采购审查判断。
+- `web/` 与 `cli.py` 把这些流程暴露给人工用户和自动化调用方。
 
-## Design rules
+## 设计规则
 
-- Each capability should have a stable input contract and a structured output contract.
-- Capabilities should be testable in isolation from the procurement review logic.
-- Capabilities may use local models, remote APIs, or traditional libraries, but they should surface the backend used.
-- Capability results should preserve evidence and warnings so the `core/` layer can decide how much to trust them.
+- 每个能力都应有稳定输入契约和结构化输出契约。
+- 能力应可脱离采购审查逻辑独立测试。
+- 能力可以使用本地模型、远程 API 或传统库，但必须显式暴露所用后端。
+- 能力输出应保留证据与告警，供 `core/` 决定信任程度。
 
-## Initial planned modules
+## 初始规划模块
 
-- `pdf_sectioning/`: long PDF chapter segmentation and section-to-page mapping
-- `pdf_tables/`: long PDF quotation/opening/deviation/experience table extraction
-- `ocr/`: scanned PDF and image text extraction
-- `vision/`: image description and image-level field extraction
-- `metadata/`: file metadata and signature extraction
-- `tables/`: table recognition and normalization
+- `pdf_sectioning/`：长 PDF 章节切分与章节-页码映射
+- `pdf_tables/`：长 PDF 报价表、开标表、偏离表、业绩表抽取
+- `ocr/`：扫描 PDF 和图片文字抽取
+- `vision/`：图像描述与图像级字段抽取
+- `metadata/`：文件元数据与签名提取
+- `tables/`：表格识别与标准化

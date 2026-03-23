@@ -1,48 +1,48 @@
-# OCR Interface Contract
+# OCR 接口契约
 
-## Positioning
+## 定位
 
-`capabilities/ocr` is an atomic capability layer.
-It does not decide bid rigging risk.
-It only accepts OCR requests and returns structured OCR facts.
+`capabilities/ocr` 是原子能力层。  
+它不负责判断围串标风险。  
+它只接收 OCR 请求，并返回结构化 OCR 事实。
 
-## Request Object
+## 请求对象
 
-Main object: `OcrRequest`
+主对象：`OcrRequest`
 
-Fields:
+字段：
 
 - `mode`
-  - `generic`: return broadly useful OCR output
-  - `targeted`: prioritize requested document types and fields
+  - `generic`：返回更通用的 OCR 结果
+  - `targeted`：优先满足调用方指定的文档类型和字段
 - `doc_types`
-  - caller-expected document types such as `business_license`, `quotation`, `authorization_letter`
+  - 调用方期望识别的文档类型，例如 `business_license`、`quotation`、`authorization_letter`
 - `fields`
-  - caller-expected fields such as `company_name`, `bid_total_amount`, `license_number`
+  - 调用方期望抽取的字段，例如 `company_name`、`bid_total_amount`、`license_number`
 - `page_hints`
-  - optional page hints for future page-level routing
+  - 为未来页级路由预留的页码提示
 - `file_hints`
-  - optional filename/path hints to narrow OCR scope
+  - 用于缩小 OCR 范围的文件名或路径提示
 - `max_sources`
-  - optional cap on discovered source files
+  - 发现源文件数量的上限
 - `max_images`
-  - optional cap on extracted images
+  - 提取图片数量的上限
 - `confidence_threshold`
-  - reserved for downstream gating
+  - 为下游门控预留的置信度阈值
 - `include_raw_text`
-  - whether caller expects extracted raw text
+  - 调用方是否需要返回原始抽取文本
 - `include_images`
-  - whether caller expects image entries in response
+  - 调用方是否需要响应中包含图片条目
 - `include_debug_payload`
-  - whether to keep extra debugging payload in future adapters
+  - 是否保留额外调试载荷
 - `metadata`
-  - free-form caller metadata
+  - 自由扩展的调用方元数据
 
-## Response Object
+## 返回对象
 
-Main object: `OcrResponse`
+主对象：`OcrResponse`
 
-Fields:
+字段：
 
 - `request`
 - `source_path`
@@ -53,48 +53,48 @@ Fields:
 - `image_results`
 - `warnings`
 
-This response is capability-level and reusable across multiple business modules.
+这个响应停留在能力层，可被多个业务模块复用。
 
-## Modes
+## 模式
 
 ### generic
 
-Used when caller has no narrow business ask.
+用于调用方没有明确业务目标的场景。
 
-Expected behavior:
+预期行为：
 
-- discover OCR-compatible inputs
-- extract images
-- classify image/doc type
-- return broad structured fields
-- preserve raw extracted text
+- 发现可做 OCR 的输入
+- 抽取图片
+- 分类图像/文档类型
+- 返回较广义的结构化字段
+- 保留原始抽取文本
 
 ### targeted
 
-Used when caller knows what it needs.
+用于调用方明确知道要什么的场景。
 
-Expected behavior:
+预期行为：
 
-- prioritize requested `doc_types`
-- prioritize requested `fields`
-- allow scope reduction via `file_hints`, `max_sources`, `max_images`
-- still return honest `doc_type` and `summary` if image is not relevant
+- 优先满足 `doc_types`
+- 优先满足 `fields`
+- 允许通过 `file_hints`、`max_sources`、`max_images` 收缩范围
+- 如果图片与目标不相关，也要诚实返回实际 `doc_type` 和 `summary`
 
-## Relationship To Review Flow
+## 与审查主流程的关系
 
-Main review flow is only a caller of OCR.
+主审查流程只是 OCR 的调用方。
 
-Recommended layering:
+推荐分层：
 
 1. `capabilities/ocr`
-   - accept `OcrRequest`
-   - return `OcrResponse`
+   - 接收 `OcrRequest`
+   - 返回 `OcrResponse`
 2. `fusion`
-   - merge OCR facts with text-extracted facts
-   - handle confidence, conflicts, preferred sources
+   - 合并 OCR 事实与文本抽取事实
+   - 处理置信度、冲突与来源优先级
 3. `core`
-   - score and assess pairwise bid-rigging risk from unified facts
+   - 基于统一事实进行围串标评分与判断
 4. `llm_review`
-   - explain and write based on unified facts and scored evidence
+   - 基于统一事实与已评分证据做解释和写作
 
-This keeps OCR isolated and reusable for non-review modules.
+这样可以把 OCR 隔离成独立能力，并复用于围串标之外的模块。

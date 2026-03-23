@@ -1,27 +1,27 @@
-# Review Loop
+# 审查主循环
 
-## Input contract
+## 输入契约
 
-- exactly one tender document
-- two or more supplier bid documents
-- optional run label and output directory
+- 恰好 1 份招标文件
+- 2 份或以上投标文件
+- 可选的运行标签与输出目录
 
-## Loop stages
+## 循环阶段
 
-1. Parse files into normalized text.
-2. Extract entities and suspicious line fingerprints.
-3. Build supplier-to-supplier comparison matrix.
-4. Score each pair using weighted heuristics.
-5. Produce:
-   - machine JSON for automation
-   - markdown summary for auditors
-   - reusable artifact files for later agent runs
+1. 把文件解析成标准化文本。
+2. 抽取主体信息和可疑文本指纹。
+3. 构建投标人两两比较矩阵。
+4. 使用加权启发式为每一对投标人评分。
+5. 产出：
+   - 供自动化使用的机器可读 JSON
+   - 供审查员阅读的 Markdown 摘要
+   - 供后续 agent 复用的运行产物文件
 
-## Why this is a harness
+## 为什么这是一套 harness
 
-The loop is stable, replayable, and tool-oriented. An LLM can later sit on top of it, but the harness already defines:
+这条循环是稳定、可回放、面向工具的。LLM 可以叠加在上层，但 harness 本身已经定义了：
 
-- what tools are available
-- what state is persisted
-- what observations feed the next step
-- what a final review artifact must contain
+- 可用的工具有哪些
+- 哪些状态需要持久化
+- 哪些观察结果会进入下一步
+- 最终审查产物必须包含什么

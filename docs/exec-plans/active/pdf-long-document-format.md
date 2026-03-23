@@ -1,88 +1,88 @@
-# PDF Long-Document Format Plan
+# 长 PDF 格式支持计划
 
-## Objective
+## 目标
 
-Support tender and bid materials delivered as single long PDFs with chaptered structure.
+支持以单个长 PDF 形式交付、并具有章节结构的招投标材料。
 
-## Scope
+## 范围
 
-In scope:
+纳入范围：
 
-- chapter-aware PDF parsing
-- key table extraction
-- section-level fact fusion
-- section-aware scoring inputs
-- report evidence upgraded to section/page/snippet references
+- 章节感知的 PDF 解析
+- 关键表格抽取
+- 章节级事实融合
+- 面向章节的评分输入
+- 报告证据升级为章节/页码/片段引用
 
-Out of scope for the first pass:
+首轮不纳入范围：
 
-- full OCR-first document understanding
-- scanned-only corpus support
-- advanced layout/vision benchmarking
+- 全量 OCR-first 文档理解
+- 纯扫描件语料支持
+- 高级版面/视觉基准测试
 
-## Deliverables
+## 交付物
 
-### Phase 1: Section Parsing
+### 第一阶段：章节解析
 
 - `capabilities/pdf_sectioning`
-- extracted section list for each PDF
-- section title, start page, end page, section text
+- 每个 PDF 的章节列表
+- 章节标题、起始页、结束页、章节文本
 
-### Phase 2: Table Extraction
+### 第二阶段：表格抽取
 
-- opening table extraction
-- quotation table extraction
-- deviation table extraction
-- experience table extraction
+- 开标表抽取
+- 报价表抽取
+- 偏离表抽取
+- 业绩表抽取
 
-### Phase 3: Fact Fusion
+### 第三阶段：事实融合
 
-- `ReviewFacts` extended for section-aware and table-aware facts
-- source metadata includes section and page
+- `ReviewFacts` 扩展为支持章节感知与表格感知事实
+- 来源元数据中包含章节与页码
 
-### Phase 4: Scoring
+### 第四阶段：评分
 
-- structure similarity updated for long-PDF format
-- technical/implementation/deviation comparison rules
-- template downweighting for generic commitment/training text
+- 面向长 PDF 格式更新结构相似性
+- 技术/实施/偏离等章节比较规则
+- 对通用承诺/培训类文本继续降权
 
-### Phase 5: Reporting
+### 第五阶段：报告
 
-- `formal_report.md` cites section/page/snippet
-- appendix rows cite section/page/snippet
-- `opinion.md` uses the same section-aware evidence summary
+- `formal_report.md` 引用章节/页码/片段
+- 附表行引用章节/页码/片段
+- `opinion.md` 使用同一套章节感知证据摘要
 
-## Implementation Steps
+## 实施步骤
 
-1. Add a PDF section parser under `capabilities`
-2. Emit per-document section catalog
-3. Add table extraction helpers for opening/quotation/deviation/experience sections
-4. Extend fusion to map section and table output into `ReviewFacts`
-5. Update scoring to consume new facts
-6. Update report generators to cite section/page/snippet
-7. Add sample-based tests for the new PDF set
+1. 在 `capabilities` 下增加 PDF 章节解析器
+2. 产出按文档划分的章节目录
+3. 为开标/报价/偏离/业绩章节增加表格抽取辅助
+4. 扩展 fusion，把章节与表格输出映射进 `ReviewFacts`
+5. 更新 scoring 以消费新事实
+6. 更新报告生成器，引用章节/页码/片段
+7. 为新 PDF 样本集补充测试
 
-## Acceptance Criteria
+## 验收标准
 
-- the new tender PDF can be parsed into usable sections
-- each bidder PDF yields at least:
-  - bid letter section
-  - qualification-related section
-  - pricing/opening section when present
-  - technical/implementation/training sections when present
-- bid amount extraction works from opening/quotation sections
-- long-document section similarity can be analyzed without relying on OCR as the main path
-- reports stay readable and evidence references are traceable
+- 新招标 PDF 能解析成可用章节
+- 每份投标 PDF 至少能产出：
+  - 投标函章节
+  - 资格相关章节
+  - 存在时的报价/开标章节
+  - 存在时的技术/实施/培训章节
+- 报价金额能从开标/报价章节中抽出
+- 长文档章节相似性可在不把 OCR 作为主路径的前提下完成分析
+- 报告保持可读，证据引用可追溯
 
-## Risks
+## 风险
 
-- bidder PDFs may use inconsistent heading styles
-- some tables may flatten badly in plain text extraction
-- some “technical similarity” is legitimate template reuse and needs downweighting
-- OCR fallback may still be needed for scanned qualifications
+- 投标 PDF 可能使用不一致的标题样式
+- 部分表格在纯文本抽取中会严重扁平化
+- 某些“技术相似”属于合理模板复用，需要降权
+- 扫描资格页可能仍需 OCR 兜底
 
-## Notes
+## 说明
 
-This plan reuses the current architecture.
-It does not replace `ReviewFacts`, `strategy`, `scoring`, or `llm_review`.
-It adds a new format-specific capability layer and feeds the existing review chain through better structured facts.
+本计划复用现有总体架构。
+它不会替换 `ReviewFacts`、`strategy`、`scoring` 或 `llm_review`。
+它做的是新增面向长 PDF 格式的能力层，并通过更结构化的事实接回现有审查主链。

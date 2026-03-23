@@ -1,14 +1,14 @@
-# SOP Phase Plan
+# SOP 阶段计划
 
-## Goal
+## 目标
 
-Align `agent_bid_rigging` with the execution discipline defined in `sop.md` without turning the project into a one-shot script pile.
+让 `agent_bid_rigging` 与 `sop.md` 里定义的执行纪律对齐，同时避免把项目做成一堆一次性脚本。
 
-## Phases
+## 阶段划分
 
-### Phase 1: Auditable Intermediate Artifacts
+### 第一阶段：可审计的中间产物
 
-Deliver stable case bookkeeping and structured review tables:
+先交付稳定的案件登记与结构化审查表：
 
 - `case_manifest.json`
 - `source_file_index.json`
@@ -18,11 +18,11 @@ Deliver stable case bookkeeping and structured review tables:
 - `price_analysis_table.json`
 - `review_conclusion_table.json`
 
-This phase focuses on traceability, repeatability, and explicit evidence boundaries.
+这一阶段重点是可追溯、可复现和明确的证据边界。
 
-### Phase 2: Specialized Analysis Chains
+### 第二阶段：专项分析链
 
-Add missing analysis tables:
+补齐以下分析表：
 
 - `structure_similarity_table`
 - `file_fingerprint_table`
@@ -33,14 +33,14 @@ Add missing analysis tables:
 - `license_match_table`
 - `timeline_table`
 
-### Phase 3: Evidence Grading and Final SOP Report
+### 第三阶段：证据分级与正式 SOP 报告
 
-Add:
+补齐：
 
 - `evidence_grade_table`
 - `risk_score_table`
-- SOP-aligned formal report structure
+- 与 SOP 对齐的正式报告结构
 
-## Current Decision
+## 当前决策
 
-Start with Phase 1 because it unlocks review traceability and gives every later module a stable storage contract.
+先从第一阶段开始，因为它能先把审查可追溯性立起来，并为后续所有模块建立稳定的存储契约。

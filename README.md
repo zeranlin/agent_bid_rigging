@@ -1,42 +1,42 @@
 # agent_bid_rigging
 
-`agent_bid_rigging` is an agent-first review harness for government procurement anti-collusion screening. It ingests one tender document and multiple supplier bid documents, extracts comparable signals, performs pairwise suspicious-pattern checks, and writes a review artifact bundle that a human auditor can verify.
+`agent_bid_rigging` 是一个面向政府采购围串标筛查的 agent-first 审查 harness。它接收 1 份招标文件和多份投标文件，抽取可比较信号，执行投标人两两异常模式检查，并输出可供人工审查员复核的审查产物包。
 
-The repository is intentionally shaped by harness engineering ideas from OpenAI:
+本仓库刻意按照 OpenAI 的 harness engineering 思路组织：
 
-- start from an empty repository and make the repository itself the operating surface
-- keep `AGENTS.md` short and use `docs/` as the source-of-truth map
-- build a repeatable loop of task definition, tool execution, evidence capture, scoring, and review artifacts
+- 从空仓库起步，让仓库本身成为运行界面
+- 保持 `AGENTS.md` 简短，把 `docs/` 作为事实文档入口
+- 构建可重复的“任务定义 -> 工具执行 -> 证据采集 -> 评分 -> 审查产物”循环
 
-Relevant references:
+相关参考：
 
 - [Harness engineering](https://openai.com/zh-Hans-CN/index/harness-engineering/)
 - [Unrolling the Codex agent loop](https://openai.com/zh-Hans-CN/index/unrolling-the-codex-agent-loop/)
 
-## What the harness does
+## 系统能做什么
 
-1. Load a tender package and multiple bid packages from disk.
-2. Normalize document text using parser backends and recursive package ingestion.
-3. Extract suspicious signals:
-   - shared phone numbers, emails, addresses, legal representatives, and bank accounts
-   - bid amount proximity and exact matches
-   - repeated non-template text across suppliers
-   - identical rare lines that do not originate from the tender
-4. Score each supplier pair and classify the result as `low`, `medium`, `high`, or `critical`.
-5. Generate a structured review opinion document, with optional LLM drafting.
-6. Persist a full run directory with machine-readable JSON and human-readable Markdown artifacts.
+1. 从磁盘加载 1 份招标材料包和多份投标材料包。
+2. 通过解析后端与递归加载能力标准化文档文本。
+3. 抽取可疑信号：
+   - 电话、邮箱、地址、法定代表人、银行账户等重合
+   - 报价完全一致或高度接近
+   - 非模板文本在不同投标人之间重合
+   - 不来源于招标文件的罕见文本重合
+4. 为每组投标人评分，并给出 `low`、`medium`、`high`、`critical` 风险等级。
+5. 生成结构化审查意见书，并可选使用 LLM 增强文案。
+6. 持久化完整运行目录，包含机器可读 JSON 与人类可读 Markdown 产物。
 
-## Repository map
+## 仓库结构
 
-- `AGENTS.md`: concise agent operating map
-- `ARCHITECTURE.md`: system layers and review loop
-- `docs/design-docs/`: design intent and core beliefs
-- `docs/exec-plans/`: active and completed execution plans
-- `src/agent_bid_rigging/`: CLI harness and review engine
-- `runs/`: generated review artifacts
-- `examples/`: sample tender and bid documents
+- `AGENTS.md`：简洁的 agent 工作地图
+- `ARCHITECTURE.md`：系统分层和审查主循环
+- `docs/design-docs/`：设计意图和核心信念
+- `docs/exec-plans/`：活动与已完成执行计划
+- `src/agent_bid_rigging/`：CLI harness 与审查引擎
+- `runs/`：运行生成的审查产物
+- `examples/`：示例招标和投标文件
 
-## Quick start
+## 快速开始
 
 ```bash
 cd /Users/linzeran/code/2026-zn/agent_bid_rigging
@@ -49,7 +49,7 @@ agent-bid-rigging analyze \
   --opinion-mode auto
 ```
 
-Real procurement-package example:
+真实采购包示例：
 
 ```bash
 agent-bid-rigging analyze \
@@ -61,20 +61,20 @@ agent-bid-rigging analyze \
   --opinion-mode template
 ```
 
-Minimal web demo:
+最小 Web 演示：
 
 ```bash
 agent-bid-rigging web-demo --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` to:
+打开 `http://127.0.0.1:8000` 后可以：
 
-- upload one tender file and multiple bid files
-- start a new review run without writing CLI commands
-- watch run state for slow local-LLM cases
-- open `formal_report`, `opinion`, and key evidence tables from the browser
+- 上传 1 份招标文件和多份投标文件
+- 不写 CLI 命令也能启动新的审查任务
+- 在本地慢速 LLM 场景下查看运行状态
+- 在浏览器中打开 `formal_report`、`opinion` 与关键证据表
 
-OCR capability demo:
+OCR 能力示例：
 
 ```bash
 agent-bid-rigging ocr \
@@ -82,14 +82,14 @@ agent-bid-rigging ocr \
   --output-dir runs/ocr_demo
 ```
 
-This command extracts embedded images from a PDF or accepts a standalone image, then uses the configured multimodal model to describe image content and write:
+这个命令会从 PDF 中提取嵌入图片，或直接接收单独图片，然后调用配置好的多模态模型描述图像内容，并写出：
 
 - `image_index.json`
 - `image_ocr_table.json`
 - `ocr_result.json`
 - `ocr_result.md`
 
-The command creates a timestamped directory under `runs/` containing:
+该命令会在 `runs/` 下创建一个带时间戳的目录，包含：
 
 - `manifest.json`
 - `case_manifest.json`
@@ -121,25 +121,25 @@ The command creates a timestamped directory under `runs/` containing:
 - `opinion.rule.md`
 - `opinion.md`
 
-## LLM review agent
+## LLM 审查层
 
-The harness now includes an opinion drafting layer:
+系统现在内置了意见草拟层：
 
-- `--opinion-mode template`: always generate a deterministic opinion template
-- `--opinion-mode llm`: require an LLM draft through OpenAI Responses API
-- `--opinion-mode auto`: use OpenAI when `OPENAI_API_KEY` is configured, otherwise fall back to the deterministic template
+- `--opinion-mode template`：始终生成确定性的模板意见
+- `--opinion-mode llm`：强制通过 OpenAI Responses API 生成 LLM 版意见
+- `--opinion-mode auto`：配置了 `OPENAI_API_KEY` 时使用 OpenAI，否则回退到确定性模板
 
-Environment variables:
+环境变量：
 
-- `OPENAI_API_KEY`: enables LLM opinion drafting
-- `OPENAI_MODEL`: optional model override, default `gpt-5`
-- `OPENAI_BASE_URL`: optional OpenAI-compatible root URL or Responses endpoint override
-- `OPENAI_TIMEOUT`: optional request timeout in seconds, default `1800`
-- `OPENAI_REASONING_EFFORT`: optional reasoning effort override, for example `low`
-- `OPENAI_NO_THINKING`: optional boolean flag for compatible endpoints, set `1` to send `enable_thinking=false`
-- `AGENT_BID_RIGGING_ASYNC_LLM`: optional boolean flag, set `1` only if you want LLM enhancement to continue in the background instead of blocking the main run
+- `OPENAI_API_KEY`：启用 LLM 意见草拟
+- `OPENAI_MODEL`：可选模型覆盖，默认 `gpt-5`
+- `OPENAI_BASE_URL`：可选的 OpenAI 兼容根地址或 Responses 接口覆盖
+- `OPENAI_TIMEOUT`：可选请求超时秒数，默认 `1800`
+- `OPENAI_REASONING_EFFORT`：可选推理强度，例如 `low`
+- `OPENAI_NO_THINKING`：面向兼容接口的布尔开关，设为 `1` 时发送 `enable_thinking=false`
+- `AGENT_BID_RIGGING_ASYNC_LLM`：可选布尔开关，仅当你希望先写规则版产物、再后台继续做 LLM 增强时设为 `1`
 
-Example for a self-hosted OpenAI-compatible endpoint:
+自托管 OpenAI 兼容接口示例：
 
 ```bash
 export OPENAI_BASE_URL="http://112.111.54.86:10011/v1"
@@ -154,32 +154,32 @@ agent-bid-rigging analyze \
   --opinion-mode llm
 ```
 
-By default, when `--opinion-mode llm` is enabled, the harness waits for the full LLM review chain to finish before considering the run complete. This is the recommended setting for slow local models. If you explicitly want a non-blocking run that writes the rule-based artifacts first and lets LLM enhancement continue in the background, set `AGENT_BID_RIGGING_ASYNC_LLM=1`.
+默认情况下，只要启用 `--opinion-mode llm`，harness 会等待完整 LLM 审查链结束后再把任务视为完成。这也是本地慢模型场景下的推荐设置。如果你明确希望先写规则版产物、再让 LLM 增强后台继续运行，可设置 `AGENT_BID_RIGGING_ASYNC_LLM=1`。
 
-When LLM review is enabled, the harness keeps both report variants:
+启用 LLM 审查后，系统会同时保留规则版和增强版两套报告：
 
-- `formal_report.rule.md`: deterministic rule/template report
-- `formal_report.llm.md`: LLM-enhanced report, written when LLM finishes successfully
-- `opinion.rule.md`: deterministic rule/template opinion
-- `opinion.llm.md`: LLM-enhanced opinion, written when LLM finishes successfully
-- `formal_report.md` and `opinion.md`: current default entrypoints, pointing to the best available version
+- `formal_report.rule.md`：确定性的规则/模板报告
+- `formal_report.llm.md`：LLM 增强版报告，LLM 成功完成后写出
+- `opinion.rule.md`：确定性的规则/模板意见
+- `opinion.llm.md`：LLM 增强版意见，LLM 成功完成后写出
+- `formal_report.md` 与 `opinion.md`：当前默认入口，指向当前可用的最佳版本
 
-If `OPENAI_BASE_URL` ends with `/v1`, the harness automatically appends `/responses`.
+如果 `OPENAI_BASE_URL` 以 `/v1` 结尾，系统会自动追加 `/responses`。
 
-The OpenAI integration uses the official Responses API pattern documented by OpenAI:
+OpenAI 集成遵循官方文档中的 Responses API 模式：
 
 - [OpenAI Platform overview](https://platform.openai.com/docs/overview)
 - [Responses API reference](https://platform.openai.com/docs/api-reference/responses/create?api-mode=responses)
 - [Migrate to the Responses API](https://platform.openai.com/docs/guides/migrate-to-responses)
 
-## Supported inputs
+## 支持的输入
 
-- single files: `.txt`, `.md`, `.json`, `.docx`, `.pdf`
-- directories containing nested supported files
-- `.zip` archives containing nested supported files
+- 单文件：`.txt`、`.md`、`.json`、`.docx`、`.pdf`
+- 包含嵌套支持文件的目录
+- 包含嵌套支持文件的 `.zip` 压缩包
 
-PDF parsing prefers `pdftotext` when available and falls back to `pypdf` automatically.
+PDF 解析优先使用 `pdftotext`，缺失时自动回退到 `pypdf`。
 
-## Current scope
+## 当前范围
 
-This remains a review harness, not a final legal adjudication engine. It produces evidence-backed suspicion indicators and a draft opinion for human procurement reviewers. Later iterations can add OCR, richer metadata extraction, benchmark datasets, and stronger multi-document reasoning.
+当前系统仍然是审查 harness，而不是最终法律裁定引擎。它输出的是有证据支撑的异常指标和供人工采购审查员使用的意见草稿。后续版本可以继续增强 OCR、更丰富的元数据抽取、基准数据集以及更强的多文档推理。

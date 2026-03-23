@@ -1,30 +1,29 @@
-# PDF Long-Document Review Format
+# 长 PDF 审查格式设计
 
-## Background
+## 背景
 
-New sample set:
+新的样本集表现为：
 
-- tender as a single text-heavy PDF
-- each bid as a single long PDF
-- technical, business, qualification, and pricing content are mixed into chaptered documents
+- 招标文件是单个、以文本为主的 PDF
+- 每家投标文件也是单个长 PDF
+- 技术、商务、资格、报价内容混排在章节化文档中
 
-This differs from the previous archive-oriented format where evidence came from many separate files inside one package.
+这与之前“一个材料包里包含多个离散文件”的压缩包场景不同。
 
-## Key Observations
+## 关键观察
 
-From the new sample set:
+基于这批新样本：
 
-- the tender PDF is text-extractable and contains project number, qualification rules, submission requirements, and contact instructions
-- bidder A uses a qualification-first structure with response letter, legal representative, authorization, licenses, audit, tax, social insurance, and commitment materials
-- bidder B uses a solution-first structure with project overview, architecture, functional design, deployment, and technical sections
-- bidder C uses a standard bid structure with bid letter, opening table, qualification section, deviation tables, experience list, technical plan, implementation plan, operation plan, and training plan
+- 招标 PDF 可直接抽出文本，包含项目编号、资质要求、报名资料、联系方式等信息
+- 投标人 A 更偏资格优先结构，前半部分集中在投标函、法代、授权、执照、审计、纳税、社保和承诺材料
+- 投标人 B 更偏方案优先结构，大量内容集中在项目概述、架构、功能设计、部署与技术方案
+- 投标人 C 更接近标准投标结构，包含投标函、开标一览表、资格章节、偏离表、业绩、技术方案、实施方案、运营方案、培训方案
 
-This means the main challenge is no longer archive aggregation.
-The main challenge becomes chapter-aware PDF understanding.
+这意味着核心挑战不再是压缩包聚合，而是**章节感知的长 PDF 理解**。
 
-## Architectural Position
+## 架构定位
 
-The existing layered architecture still works:
+现有分层架构仍然适用：
 
 1. `capabilities`
 2. `fusion`
@@ -33,76 +32,75 @@ The existing layered architecture still works:
 5. `artifacts`
 6. `llm_review`
 
-We should not redesign the whole system.
-We should shift capability focus from:
+我们不需要推翻系统，只需要把能力重心从：
 
-- multi-file package aggregation
-- OCR-first supplementation
+- 多文件材料包聚合
+- OCR-first 补漏
 
-to:
+转到：
 
-- PDF chapter segmentation
-- table extraction
-- section-level comparison
-- OCR as a fallback for scans and embedded images
+- PDF 章节切分
+- 表格抽取
+- 章节级比较
+- OCR 作为扫描件与嵌入图片的兜底
 
-## Required Capability Changes
+## 需要补的能力变化
 
-### 1. PDF Sectioning Capability
+### 1. PDF 章节切分能力
 
-New capability goal:
+目标：
 
-- split a long PDF into logical sections
-- identify section title
-- estimate start page and end page
-- extract per-section text
+- 把长 PDF 切成逻辑章节
+- 识别章节标题
+- 估算起止页
+- 提取章节正文
 
-Expected section families:
+预期章节族包括：
 
-- bid letter / response letter
-- opening table / quotation table
-- qualification review section
-- legal representative / authorization section
-- business deviation section
-- technical deviation section
-- technical proposal
-- implementation plan
-- operation plan
-- training plan
-- experience list
+- 投标函 / 响应函
+- 开标一览表 / 报价表
+- 资格审查章节
+- 法代 / 授权章节
+- 商务偏离表
+- 技术偏离表
+- 技术方案
+- 实施方案
+- 运营方案
+- 培训方案
+- 业绩表
 
-This should live under `capabilities`, not `core`.
+这部分应放在 `capabilities/`，而不是 `core/`。
 
-### 2. Table Extraction Capability
+### 2. 表格抽取能力
 
-Critical tables in the new format:
+新格式里最关键的表包括：
 
-- opening table
-- quotation table
-- technical deviation table
-- business deviation table
-- experience table
+- 开标一览表
+- 报价表
+- 技术偏离表
+- 商务偏离表
+- 业绩表
 
-The system needs structured extraction, not only raw text OCR.
+系统需要的是结构化抽取，而不仅仅是 OCR 到原始文本。
 
-### 3. OCR As Secondary Path
+### 3. OCR 作为次级路径
 
-OCR is still useful, but no longer the main entry path for this format.
+OCR 仍然有价值，但对这种格式已经不是主入口。
 
-Recommended use:
+推荐使用场景：
 
-- scanned qualification pages
-- embedded certificates
-- screenshots
-- image-heavy appendices
+- 扫描的资格页
+- 嵌入式证照图片
+- 截图型附件
+- 图像化附录页
 
-Main flow should prefer text extraction first.
+主路径仍然应优先选择文本抽取。
 
-## ReviewFacts Impact
+## 对 `ReviewFacts` 的影响
 
-`ReviewFacts` remains the correct integration point.
+`ReviewFacts` 依然是正确的集成点。
 
-New fact families to emphasize:
+需要重点强调的新事实族：
 
 - `bid_total_amount`
 - `quotation_items`
@@ -121,91 +119,91 @@ New fact families to emphasize:
 - `training_sections`
 - `deviation_rows`
 
-Facts should keep:
+这些事实都应该保留：
 
-- source document
-- source page
-- source section
-- source type (`text`, `table`, `ocr`)
-- confidence
+- 来源文档
+- 来源页码
+- 来源章节
+- 来源类型（`text`、`table`、`ocr`）
+- 置信度
 
-## Scoring Impact
+## 对评分层的影响
 
-The scoring layer should continue to consume `ReviewFacts`, but new section-aware rules are needed.
+评分层仍然消费 `ReviewFacts`，但需要新增章节感知规则。
 
-### Rules To Add Or Strengthen
+### 需要新增或增强的规则
 
-- chapter structure similarity
-- opening table / quotation similarity
-- business deviation similarity
-- technical deviation similarity
-- experience overlap
-- section-level technical proposal similarity
-- implementation plan similarity
-- training/operation plan similarity with template downweighting
+- 章节结构相似
+- 开标 / 报价表相似
+- 商务偏离表相似
+- 技术偏离表相似
+- 业绩重叠
+- 技术方案章节相似
+- 实施方案相似
+- 培训 / 运营方案相似，并继续做模板降权
 
-### Rules To Keep Downweighted
+### 需要继续降权的规则
 
-Do not over-score common:
+不应对以下常见内容过度加分：
 
-- response letters
-- commitment letters
-- standard business promises
-- generic training and after-sales text
-- platform template sections
+- 投标函
+- 承诺书
+- 通用商务承诺
+- 通用培训与售后文本
+- 平台模板章节
 
-## Strategy Impact
+## 对策略层的影响
 
-For this format, strategy should become:
+在这种格式下，策略层应变成：
 
-1. text extraction first
-2. chapter identification
-3. key table extraction
-4. OCR only for gaps or scans
-5. LLM only after structured facts are complete
+1. 先做文本抽取
+2. 再做章节识别
+3. 再做关键表格抽取
+4. 对缺口或扫描页才启用 OCR
+5. 等结构化事实完整后再考虑 LLM
 
-This is more efficient than sending the full PDF corpus into OCR.
+这比把整本 PDF 全量送进 OCR 更高效。
 
-## Recommended Implementation Direction
+## 推荐实现方向
 
 ### Phase A
 
-Add chapter-aware PDF parsing:
+先补章节感知的 PDF 解析：
 
-- section title discovery
-- section-to-page mapping
-- section text extraction
+- 章节标题发现
+- 章节到页码映射
+- 章节文本抽取
 
 ### Phase B
 
-Add structured table extraction:
+再补结构化表格抽取：
 
-- opening table
-- quotation
-- deviation tables
-- experience table
+- 开标一览表
+- 报价表
+- 偏离表
+- 业绩表
 
 ### Phase C
 
-Extend `ReviewFacts` and `scoring` for section-aware facts and comparisons.
+扩展 `ReviewFacts` 和 `scoring`，接入章节感知与表格感知事实。
 
 ### Phase D
 
-Update `formal_report` and `opinion` so findings cite:
+更新 `formal_report` 和 `opinion`，让发现直接引用：
 
-- section name
-- page
-- snippet
+- 章节名
+- 页码
+- 片段
 
-instead of only generic document-level text.
+而不是只停留在文档级描述。
 
-## Success Criteria
+## 成功标准
 
-The new format is considered supported when:
+满足以下条件时，视为支持了新格式：
 
-- one tender PDF and multiple bidder PDFs can run end-to-end
-- opening table fields are extracted reliably
-- bidder qualification fields are extracted from long PDFs
-- section-level technical similarity can be assessed
-- reports cite section/page/snippet level evidence
-- OCR is only used when text/table parsing is insufficient
+- 1 份招标 PDF 和多份投标 PDF 可以端到端运行
+- 开标与报价字段可以稳定抽出
+- 资格字段能从长 PDF 中提取
+- 章节级技术相似度可以评估
+- 报告能引用章节/页码/片段级证据
+- OCR 只在文本与表格路径不足时补位

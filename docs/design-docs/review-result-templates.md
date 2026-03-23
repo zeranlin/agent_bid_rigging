@@ -1,88 +1,100 @@
-# Review Result Templates
+# 审查结果模板
 
-## Goal
+## 目标
 
-Define a stable output contract for bid-rigging review results so that:
+定义一套稳定的围串标审查结果输出契约，使得：
 
-- rule-based and LLM-enhanced outputs use the same section order
-- reviewers can quickly find facts, clues, exclusions, and recommendations
-- structured tables and markdown reports stay aligned
+- 规则版和 LLM 增强版使用相同章节顺序
+- 审查员能快速定位事实、线索、排除因素和建议
+- 结构化表与 Markdown 报告保持一致
 
-## Output Layers
+## 输出层次
 
-### 1. Quick Summary
+### 1. 快速摘要
 
-Audience:
-- reviewers doing first-pass triage
-- managers who only need the top conclusion
+面向：
 
-Required sections:
-- project name / project id
-- supplier list
-- overall conclusion
-- top suspicious supplier pairs
-- next-step recommendation
+- 做初筛的审查员
+- 只需要顶层结论的管理者
 
-Primary file:
+必备章节：
+
+- 项目名称 / 项目编号
+- 供应商列表
+- 总体结论
+- 重点可疑供应商组合
+- 下一步建议
+
+主文件：
+
 - `summary.md`
 
-### 2. Formal Review Report
+### 2. 正式审查报告
 
-Audience:
-- procurement reviewers
-- archive / case bundle readers
+面向：
 
-Required sections:
-1. project basic info
-2. review purpose
-3. review basis
-4. review scope and document acceptance
-5. review method
-6. review status
-7. suspicious clues
-8. exclusionary factors
-9. preliminary conclusion
-10. follow-up checks
-11. notes
+- 采购审查员
+- 归档与案卷阅读者
 
-Inside `review status`, the report should keep these five fixed subsections:
-- pricing comparison
-- structure and text comparison
-- identity / contact comparison
-- authorization and qualification comparison
-- timeline and generation-feature comparison
+必备章节：
 
-Primary files:
+1. 项目基本信息
+2. 审查目的
+3. 审查依据
+4. 审查范围与材料接收情况
+5. 审查方法
+6. 审查情况
+7. 发现的可疑点
+8. 排除性因素
+9. 初步审查结论
+10. 建议进一步核查事项
+11. 说明
+
+其中“审查情况”固定保留 5 个子节：
+
+- 报价情况比对
+- 结构与文本内容比对
+- 主体与联系方式比对
+- 授权与资质材料比对
+- 时间与生成特征比对
+
+主文件：
+
 - `formal_report.json`
 - `formal_report.md`
 
-### 3. Review Opinion
+### 3. 审查意见书
 
-Audience:
-- reviewers who need a concise opinion memo
-- LLM-enhanced narrative consumers
+面向：
 
-Required sections:
-1. project overview
-2. review basis and method
-3. facts summary
-4. suspicious clues
-5. exclusionary factors
-6. preliminary opinion
-7. suggested follow-up checks
-8. notes
+- 需要简明意见备忘的审查员
+- 需要增强叙事的 LLM 使用场景
 
-Primary files:
+必备章节：
+
+1. 项目概况
+2. 审查依据与方法
+3. 事实摘要
+4. 主要可疑线索
+5. 排除性因素
+6. 初步意见
+7. 建议进一步核查事项
+8. 说明
+
+主文件：
+
 - `opinion.json`
 - `opinion.md`
 
-### 4. Evidence Tables
+### 4. 证据表
 
-Audience:
-- auditors
-- later agents / replay workflows
+面向：
 
-Required tables:
+- 审计人员
+- 后续 agent / 回放流程
+
+必备表：
+
 - `review_facts.json`
 - `entity_field_table.json`
 - `price_analysis_table.json`
@@ -93,59 +105,60 @@ Required tables:
 - `risk_score_table.json`
 - `review_conclusion_table.json`
 
-## Template Rules
+## 模板规则
 
-### Naming
+### 名称口径
 
-- Use full supplier names in formal markdown when available.
-- If short labels are needed for pairwise summaries, define the mapping once and stay consistent.
-- Do not mix full names and short names in the same section without explanation.
+- 正式 Markdown 中优先使用供应商全称。
+- 若需要短名，应先定义映射，再在同一章节内保持一致。
+- 不要在没有说明的情况下混用全称和简称。
 
-### Facts vs. Opinions
+### 事实与意见分离
 
-- `review status` and `facts summary` should state observed facts only.
-- each subsection may end with a short `审查意见` paragraph
-- `preliminary conclusion` must be separate from fact description
+- “审查情况”和“事实摘要”只陈述观察到的事实。
+- 每个子节可以在结尾附一小段“审查意见”。
+- “初步结论”必须独立于事实描述。
 
-### Suspicious Clues Coverage
+### 可疑线索覆盖
 
-- every supplier pair shown as `medium` or above in the risk table should have at least one clue entry in markdown
-- clue ordering should follow risk score descending
+- 所有在风险表中达到 `medium` 及以上的供应商组合，都应在 Markdown 中至少出现一条线索。
+- 线索顺序应按风险分从高到低排列。
 
-### Exclusionary Factors
+### 排除性因素
 
-- exclusionary factors must be explicitly listed
-- if none exist, write that no clear exclusionary factors were identified
+- 排除性因素必须单列。
+- 若没有明确排除因素，应明确写明当前未发现。
 
-### Conclusion Levels
+### 结论分级
 
-Use exactly one of these normalized conclusion bands:
-- no strong abnormal signal identified
-- suspicious clues exist but evidence is insufficient, continue verification
-- strong suspicious clues exist, prioritize enhanced verification
+必须且只能使用以下结论带之一：
 
-## Alignment Requirements
+- 未发现足以支持明显异常判断的强信号
+- 存在可疑线索，但证据不足，建议继续核查
+- 存在较强可疑线索，建议列为重点复核对象
 
-### `formal_report` alignment
+## 一致性要求
 
-- should be the most complete narrative artifact
-- should use full project metadata
-- should map directly to evidence tables
+### `formal_report` 一致性
 
-### `opinion` alignment
+- 应是最完整的叙事型产物
+- 使用完整项目元数据
+- 与证据表直接对应
 
-- should be shorter than `formal_report`
-- should reuse the same conclusion band and same top suspicious pairs
-- should not introduce new facts absent from `formal_report` or evidence tables
+### `opinion` 一致性
 
-### LLM alignment
+- 应比 `formal_report` 更短
+- 使用同一结论带、同一重点供应商组合
+- 不引入证据表和正式报告中不存在的新事实
 
-- LLM outputs should follow the same section contract
-- LLM may improve explanation and wording, but must not change evidence hierarchy
+### LLM 一致性
 
-## Current Implementation Direction
+- LLM 输出必须遵循同一套章节契约
+- LLM 只负责增强解释与表达，不改变证据层级
 
-- `summary.md` stays as the fast triage surface
-- `formal_report.md` is the primary full report body
-- `opinion.md` is the concise opinion memo using the same fact and conclusion hierarchy
-- `review_facts.json` is the canonical fact bundle for downstream reporting and LLM prompting
+## 当前实现方向
+
+- `summary.md` 作为快速分流入口
+- `formal_report.md` 作为主报告正文
+- `opinion.md` 作为共享同一事实层次的简版意见书
+- `review_facts.json` 作为下游报告和 LLM 提示的规范事实包

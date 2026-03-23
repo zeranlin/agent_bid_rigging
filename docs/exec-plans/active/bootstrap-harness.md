@@ -1,26 +1,26 @@
-# Bootstrap Harness Plan
+# 基础 Harness 计划
 
-## Objective
+## 目标
 
-Create the first runnable version of the bid-rigging review harness from an empty repository.
+从空仓库起步，构建首个可运行的围串标审查 harness。
 
-## Scope
+## 范围
 
-- repository map and agent docs
-- installable Python package
-- CLI and REPL
-- document parsers
-- extraction and scoring engine
-- run artifacts
-- tests and sample data
+- 仓库地图与 agent 文档
+- 可安装的 Python 包
+- CLI 与 REPL
+- 文档解析器
+- 抽取与评分引擎
+- 运行产物
+- 测试与样例数据
 
-## Progress Log
+## 进展记录
 
-- 2026-03-20: repository bootstrapped from empty remote
-- 2026-03-20: implementing deterministic review loop and artifact writer
+- 2026-03-20：从空远程仓库完成初始化
+- 2026-03-20：开始实现确定性审查循环与产物写出器
 
-## Exit Criteria
+## 退出标准
 
-- `pip install -e .` succeeds
-- example run produces a report under `runs/`
-- automated tests pass locally
+- `pip install -e .` 成功
+- 示例运行能在 `runs/` 下生成报告
+- 自动化测试在本地通过

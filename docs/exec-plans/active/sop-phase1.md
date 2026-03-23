@@ -1,27 +1,27 @@
-# SOP Phase 1 Plan
+# SOP 第一阶段计划
 
-## Objective
+## 目标
 
-Implement the first SOP-aligned milestone: auditable intermediate artifacts and structured review outputs.
+实现首个与 SOP 对齐的里程碑：可审计的中间产物和结构化审查输出。
 
-## Deliverables
+## 交付物
 
-- source file registration with hashes
-- extracted component index for archive and directory inputs
-- basic document catalog
-- structured entity field table
-- structured price analysis table
-- review conclusion table that separates facts, suspicious clues, exclusions, and recommendations
+- 带 hash 的源文件登记表
+- 面向压缩包和目录输入的提取组件索引
+- 基础文档目录
+- 结构化主体字段表
+- 结构化价格分析表
+- 区分事实、可疑线索、排除因素和建议的结论表
 
-## Non-goals
+## 非目标
 
 - OCR
-- authorization chain analysis
-- timeline extraction
-- evidence A/B/C/D grading
+- 授权链分析
+- 时间线抽取
+- 证据 A/B/C/D 分级
 
-## Exit Criteria
+## 退出标准
 
-- `analyze` produces Phase 1 artifact tables in every run directory
-- tests cover the new outputs
-- existing example and archive workflows still pass
+- `analyze` 在每个运行目录里都产出第一阶段表
+- 测试覆盖这些新输出
+- 既有样例和压缩包工作流仍然通过

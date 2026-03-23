@@ -1,59 +1,54 @@
-# Test Plan
+# 测试计划
 
-## Test Inventory Plan
+## 测试清单规划
 
-- `test_core.py`: 11 unit tests planned
-- `test_full_e2e.py`: 3 end-to-end tests planned
+- `test_core.py`：规划中的单元测试
+- `test_full_e2e.py`：规划中的端到端测试
 
-## Unit Test Plan
+## 单元测试计划
 
 - `utils/file_loader.py`
-  - test plain text loading and normalization
-  - test zip archive ingestion and aggregation
-  - edge cases: unsupported suffix
-  - expected tests: 3
+  - 测试纯文本加载与标准化
+  - 测试 zip 压缩包加载与聚合
+  - 边界情况：不支持的后缀
 - `core/extractor.py`
-  - extract phone, email, price, and template-filtered lines
-  - edge cases: no price present
-  - expected tests: 2
+  - 抽取电话、邮箱、价格以及模板过滤后的行
+  - 边界情况：没有价格
 - `core/scoring.py`
-  - score supplier pair from overlapping identifiers and text
-  - edge cases: low-risk pair with no overlap and signature-page noise
-  - expected tests: 2
+  - 基于标识重合和文本线索进行两两评分
+  - 边界情况：无重合的低风险组合、签章页噪声
 - `core/opinion.py`
-  - generate deterministic review opinion from structured report
-  - edge cases: high-risk pair should be called out in the conclusion
-  - expected tests: 1
+  - 基于结构化报告生成确定性审查意见
+  - 边界情况：高风险组合必须在结论里被点名
 - `core/artifacts.py`
-  - classify known document types and support structured artifact generation
-  - edge cases: unknown vs known document labels, duplicate hash detection, evidence grading and final report rendering
-  - expected tests: 3
+  - 已知文档类型分类与结构化产物生成
+  - 边界情况：未知/已知标签、重复 hash 检测、证据分级和最终报告渲染
 
-## E2E Test Plan
+## 端到端测试计划
 
-- run the installed or module CLI on sample tender and bid files
-- run the CLI on zip archives directly
-- verify JSON or report output structure
-- verify that the run directory contains generated artifacts
+- 用已安装 CLI 或模块方式运行示例招标与投标文件
+- 直接对 zip 压缩包运行 CLI
+- 校验 JSON 与报告输出结构
+- 校验运行目录内的产物是否齐全
 
-## Realistic Workflow Scenarios
+## 真实工作流场景
 
-- Workflow name: basic collusion screen
-  - Simulates: one tender with three bids where two suppliers share suspicious identifiers
-  - Operations chained: load tender, load bids, extract, compare, score, write artifacts
-  - Verified: pairwise risk order and run artifact files
+- 工作流名称：基础围串标筛查
+  - 模拟：1 份招标、3 份投标，其中两家共享可疑标识
+  - 操作链：加载招标、加载投标、抽取、比较、评分、写出产物
+  - 验证点：两两风险排序与运行产物文件
 
-- Workflow name: clean comparison
-  - Simulates: two suppliers with distinct data and limited overlap
-  - Operations chained: same as above
-  - Verified: low or medium risk without false critical classification
+- 工作流名称：干净样本对比
+  - 模拟：两家供应商数据不同、重合很少
+  - 操作链：同上
+  - 验证点：结果为 low 或 medium，不出现误判 critical
 
-- Workflow name: archive review
-  - Simulates: one tender zip and multiple bid zips with nested text components
-  - Operations chained: unzip, aggregate, extract, compare, write artifacts
-  - Verified: zip input support and artifact generation
+- 工作流名称：压缩包审查
+  - 模拟：1 个招标 zip + 多个投标 zip，内部包含嵌套文本组件
+  - 操作链：解压、聚合、抽取、比较、写出产物
+  - 验证点：zip 输入支持与产物生成
 
-## Test Results
+## 测试结果
 
 ```text
 ============================= test session starts ==============================
@@ -80,13 +75,13 @@ src/agent_bid_rigging/tests/test_full_e2e.py::TestCLIEndToEnd::test_analyze_acce
 ============================== 11 passed in 0.48s ===============================
 ```
 
-## Summary Statistics
+## 汇总统计
 
-- Total tests: 11
-- Pass rate: 100%
-- Execution time: 0.48s
+- 测试总数：11
+- 通过率：100%
+- 执行时间：0.48s
 
-## Coverage Notes
+## 覆盖说明
 
-- Covered: plain text loading, zip archive ingestion, extraction, scoring, signature-noise filtering, opinion drafting, CLI help, end-to-end artifact generation, zip-input CLI flow
-- Not yet covered: `.docx` parsing regression cases, explicit `pdftotext` branch validation, malformed procurement tables, OCR/scanned files
+- 已覆盖：纯文本加载、zip 压缩包加载、抽取、评分、签章噪声过滤、意见草拟、CLI help、端到端产物生成、zip 输入 CLI 流程
+- 尚未覆盖：`.docx` 解析回归、`pdftotext` 分支显式校验、异常采购表格、OCR/扫描件
