@@ -98,6 +98,34 @@ RARE_EXPRESSION_TOKENS = (
     "幂等",
     "mapping",
 )
+GENERIC_SOLUTION_TOKENS = (
+    "支持",
+    "实现",
+    "提供",
+    "管理",
+    "功能",
+    "系统",
+    "模块",
+    "平台",
+    "业务",
+    "流程",
+    "数据",
+    "接口",
+    "用户",
+    "采购单位",
+    "供应商",
+    "订单",
+    "商品",
+    "服务",
+    "应用",
+    "查询",
+    "维护",
+    "配置",
+    "展示",
+    "处理",
+    "流转",
+    "协同",
+)
 TEMPLATE_COMPONENT_PATTERNS = (
     "项目实施方案",
     "质量保证及售后服务承诺",
@@ -283,22 +311,33 @@ def _pair_only_line_findings(
     right: ExtractedSignals | SupplierFacts,
     global_line_counts: Counter[str],
 ) -> list[PairwiseFinding]:
-    overlap = sorted(
+    raw_overlap = sorted(
         line
         for line in (set(_candidate_overlap_lines(left)) & set(_candidate_overlap_lines(right)))
         if global_line_counts[line] == 2
     )
-    overlap = [line for line in overlap if not _is_template_like_overlap(line, left, right)]
+    if not raw_overlap:
+        return []
+
+    error_lines = [line for line in raw_overlap if _is_shared_error_like_overlap(line, left, right)]
+    rare_lines = [
+        line
+        for line in raw_overlap
+        if line not in error_lines and _is_rare_expression_overlap(line, left, right)
+    ]
+    overlap = [
+        line
+        for line in raw_overlap
+        if line in error_lines or line in rare_lines or not _is_template_like_overlap(line, left, right)
+    ]
     if not overlap:
         return []
 
-    error_lines = [line for line in overlap if _is_shared_error_like_overlap(line, left, right)]
-    rare_lines = [
+    general_lines = [
         line
         for line in overlap
-        if line not in error_lines and _is_rare_expression_overlap(line, left, right)
+        if line not in error_lines and line not in rare_lines and _is_actionable_general_overlap(line)
     ]
-    general_lines = [line for line in overlap if line not in error_lines and line not in rare_lines]
 
     findings: list[PairwiseFinding] = []
     if error_lines:
@@ -321,7 +360,7 @@ def _pair_only_line_findings(
                 evidence_details=[_build_overlap_evidence_detail(line, left, right) for line in rare_lines[:5]],
             )
         )
-    if general_lines and not findings:
+    if len(general_lines) >= 2 and not findings:
         weight = 8 if len(general_lines) >= 4 else 4
         findings.append(
             PairwiseFinding(
@@ -620,6 +659,8 @@ def _timeline_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedS
 def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
     if any(pattern in line for pattern in TEMPLATE_OVERLAP_PATTERNS):
         return True
+    if _looks_generic_solution_line(line):
+        return True
     left_refs = _candidate_overlap_refs(left).get(line, [])
     right_refs = _candidate_overlap_refs(right).get(line, [])
     if _refs_look_template_like(left_refs) and _refs_look_template_like(right_refs):
@@ -655,6 +696,32 @@ def _is_rare_expression_overlap(line: str, left: ExtractedSignals | SupplierFact
     if len(re.findall(r"[A-Za-z]{2,}|\d{2,}", line)) >= 2:
         return True
     return False
+
+
+def _looks_generic_solution_line(line: str) -> bool:
+    if len(line) < 16:
+        return False
+    lowered = line.lower()
+    if any(token in lowered for token in RARE_EXPRESSION_TOKENS):
+        return False
+    if any(token in lowered for token in ERROR_LIKE_TOKENS):
+        return False
+    generic_hits = sum(1 for token in GENERIC_SOLUTION_TOKENS if token in line)
+    if generic_hits < 3:
+        return False
+    if re.search(r"[A-Za-z]{2,}|\d{2,}", line):
+        return False
+    return True
+
+
+def _is_actionable_general_overlap(line: str) -> bool:
+    if len(line) < 18:
+        return False
+    if _looks_generic_solution_line(line):
+        return False
+    if len(re.findall(r"[\u4e00-\u9fff]{2,}", line)) < 3:
+        return False
+    return True
 
 
 def _refs_look_template_like(refs: list[dict]) -> bool:

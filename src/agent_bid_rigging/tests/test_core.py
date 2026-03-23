@@ -1200,8 +1200,22 @@ def test_general_text_similarity_does_not_form_actionable_clue_by_itself() -> No
     report = build_review_conclusion_table([assessment])
     titles = {finding.title for finding in assessment.findings}
 
-    assert "仅两家共享的一般文本相似" in titles
+    assert "仅两家共享的一般文本相似" not in titles
     assert report["suspicious_clues"] == []
+
+
+def test_two_generic_solution_lines_do_not_trigger_general_text_similarity() -> None:
+    lines = [
+        "系统支持采购单位在线查询订单状态并进行业务流转处理。",
+        "平台提供供应商商品管理、配置维护和数据展示能力。",
+    ]
+    left = extract_signals(load_document_from_text("alpha", "bid", "技术方案\n" + "\n".join(lines)))
+    right = extract_signals(load_document_from_text("beta", "bid", "技术方案\n" + "\n".join(lines)))
+
+    assessment = assess_pairs([left, right])[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "仅两家共享的一般文本相似" not in titles
 
 
 def load_document_from_text(name: str, role: str, text: str):
