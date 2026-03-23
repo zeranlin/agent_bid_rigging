@@ -307,6 +307,8 @@ def test_build_review_facts_carries_platform_side_timeline_fields() -> None:
     assert supplier.timeline_terminal_ids == ["terminal-1"]
     assert supplier.timeline_ip_addresses == ["10.10.0.8"]
     assert supplier.platform_trace_lines == ["upload=2026-03-20T10:08:00；ca=张三；terminal=terminal-1；ip=10.10.0.8"]
+    assert supplier.component_trace_profiles[0]["display_name"] == "开标一览表.pdf"
+    assert supplier.component_trace_profiles[0]["upload_at"] == "2026-03-20T10:08:00"
 
 
 def test_build_review_facts_normalizes_person_names_and_addresses() -> None:

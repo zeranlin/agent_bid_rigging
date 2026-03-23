@@ -95,6 +95,7 @@ class SupplierFacts:
     timeline_terminal_ids: list[str] = field(default_factory=list)
     timeline_ip_addresses: list[str] = field(default_factory=list)
     platform_trace_lines: list[str] = field(default_factory=list)
+    component_trace_profiles: list[dict[str, Any]] = field(default_factory=list)
     file_fingerprints: list[dict[str, Any]] = field(default_factory=list)
     section_order_profile: list[str] = field(default_factory=list)
     table_structure_profiles: list[dict[str, Any]] = field(default_factory=list)

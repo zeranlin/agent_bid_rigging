@@ -850,6 +850,7 @@ def _build_supplier_profiles_from_facts(
                 "terminal_ids": timeline_map.get(supplier.supplier, {}).get("terminal_ids", [])[:10],
                 "ip_addresses": timeline_map.get(supplier.supplier, {}).get("ip_addresses", [])[:10],
                 "platform_trace_count": timeline_map.get(supplier.supplier, {}).get("platform_trace_count", 0),
+                "trace_examples": timeline_map.get(supplier.supplier, {}).get("trace_examples", [])[:3],
                 "fingerprint_count": timeline_map.get(supplier.supplier, {}).get("fingerprint_count", 0),
                 "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
             }
@@ -896,19 +897,36 @@ def _build_structure_summary(
         pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
         homology_titles = row.get("dimension_summary", {}).get("file_homology", {}).get("finding_titles", [])
         title_set = set(homology_titles)
+        evidence_map = _evidence_text_map(
+            evidence_grade_table,
+            pair_label,
+            {
+                "文件完全一致",
+                "文件指纹重合",
+                "章节顺序高度同构",
+                "章节顺序相似",
+                "关键表格结构高度一致",
+                "关键表格结构相似",
+                "异常同构结构",
+            },
+        )
         if "异常同构结构" in title_set:
-            points.append(f"{pair_label}同时出现文件指纹、章节顺序或关键表格结构的组合命中，需进一步复核是否存在同底稿加工或异常同构制作。")
+            points.append(
+                f"{pair_label}同时出现文件指纹、章节顺序或关键表格结构的组合命中，需进一步复核是否存在同底稿加工或异常同构制作。"
+                f"{_inline_example(evidence_map, '异常同构结构')}"
+            )
             continue
         if "文件完全一致" in title_set or "文件指纹重合" in title_set:
-            points.append(f"{pair_label}存在文件指纹命中，提示部分材料可能存在同源或直接复用情形。")
+            title = "文件完全一致" if "文件完全一致" in title_set else "文件指纹重合"
+            points.append(f"{pair_label}存在文件指纹命中，提示部分材料可能存在同源或直接复用情形。{_inline_example(evidence_map, title)}")
         if "章节顺序高度同构" in title_set:
-            points.append(f"{pair_label}章节顺序高度同构，但仍需结合文件指纹或关键表格结构进一步判断是否属于异常同构。")
+            points.append(f"{pair_label}章节顺序高度同构，但仍需结合文件指纹或关键表格结构进一步判断是否属于异常同构。{_inline_example(evidence_map, '章节顺序高度同构')}")
         elif "章节顺序相似" in title_set:
-            points.append(f"{pair_label}结构编排存在相似性，目前更接近目录响应习惯相似，单独不足以认定异常。")
+            points.append(f"{pair_label}结构编排存在相似性，目前更接近目录响应习惯相似，单独不足以认定异常。{_inline_example(evidence_map, '章节顺序相似')}")
         if "关键表格结构高度一致" in title_set:
-            points.append(f"{pair_label}关键表格结构高度一致，需结合文件指纹或章节顺序继续复核。")
+            points.append(f"{pair_label}关键表格结构高度一致，需结合文件指纹或章节顺序继续复核。{_inline_example(evidence_map, '关键表格结构高度一致')}")
         elif "关键表格结构相似" in title_set:
-            points.append(f"{pair_label}关键表格结构存在相似性，暂作为结构层面的辅助线索。")
+            points.append(f"{pair_label}关键表格结构存在相似性，暂作为结构层面的辅助线索。{_inline_example(evidence_map, '关键表格结构相似')}")
         text_titles = set(row.get("dimension_summary", {}).get("text_similarity", {}).get("finding_titles", []))
         if "仅两家共享的共同错误表述" in text_titles:
             points.append(f"{pair_label}出现共同错误或异常表述，需结合主体、报价和原始底稿进一步复核。")
@@ -932,6 +950,25 @@ def _build_structure_summary(
         points.append("对技术方案、实施方案和培训方案进行章节级比对后，当前未发现达到高相似度阈值的章节组合。")
     opinion = "结构同源维度应优先看文件指纹、章节顺序和关键表格结构的组合关系。单独的目录相似或表格结构相似通常仅反映响应习惯接近，只有形成组合异常时，才宜进一步复核是否存在同底稿加工或异常同构制作。"
     return {"points": points, "opinion": opinion}
+
+
+def _evidence_text_map(evidence_grade_table: list[dict], pair_label: str, titles: set[str]) -> dict[str, list[str]]:
+    mapping: dict[str, list[str]] = {}
+    for row in evidence_grade_table:
+        if row.get("pair") != pair_label:
+            continue
+        title = str(row.get("finding_title") or "")
+        if title not in titles:
+            continue
+        mapping[title] = [str(item) for item in (row.get("evidence") or []) if str(item).strip()]
+    return mapping
+
+
+def _inline_example(mapping: dict[str, list[str]], title: str) -> str:
+    examples = mapping.get(title) or []
+    if not examples:
+        return ""
+    return f" 示例：{examples[0]}。"
 
 
 def _build_identity_points(profiles: list[dict]) -> list[str]:
@@ -1111,10 +1148,18 @@ def _authorization_titles_form_actionable_combo(titles: set[str]) -> bool:
 
 
 def _build_timeline_points(profiles: list[dict]) -> list[str]:
-    return [
-        f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}；创建时间提取 {len(profile.get('created_times', []))} 条，修改时间提取 {len(profile.get('modified_times', []))} 条，上传时间提取 {len(profile.get('uploaded_times', []))} 条，CA使用人 {len(profile.get('ca_users', []))} 项，终端/设备标识 {len(profile.get('terminal_ids', []))} 项，IP 地址 {len(profile.get('ip_addresses', []))} 项，平台侧痕迹 {profile.get('platform_trace_count', 0)} 条，文件指纹 {profile.get('fingerprint_count', 0)} 项。"
-        for profile in profiles
-    ] or ["当前未形成稳定的时间特征分析结果。"]
+    points: list[str] = []
+    for profile in profiles:
+        line = (
+            f"{profile['full_name']}文件时间特征：{profile['timeline_summary']}；创建时间提取 {len(profile.get('created_times', []))} 条，修改时间提取 {len(profile.get('modified_times', []))} 条，"
+            f"上传时间提取 {len(profile.get('uploaded_times', []))} 条，CA使用人 {len(profile.get('ca_users', []))} 项，终端/设备标识 {len(profile.get('terminal_ids', []))} 项，"
+            f"IP 地址 {len(profile.get('ip_addresses', []))} 项，平台侧痕迹 {profile.get('platform_trace_count', 0)} 条，文件指纹 {profile.get('fingerprint_count', 0)} 项。"
+        )
+        examples = profile.get("trace_examples", [])
+        if examples:
+            line += f" 组件级轨迹示例：{'；'.join(examples[:2])}。"
+        points.append(line)
+    return points or ["当前未形成稳定的时间特征分析结果。"]
 
 
 def _build_timeline_opinion(profiles: list[dict]) -> str:
@@ -1815,6 +1860,7 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
                     "terminal_ids": terminal_ids,
                     "ip_addresses": ip_addresses,
                     "platform_trace_count": platform_trace_count,
+                    "trace_examples": _component_trace_examples(supplier.component_trace_profiles),
                     "fingerprint_count": fingerprint_count,
                     "summary": (
                         "发现平台侧电子痕迹"
@@ -1882,6 +1928,20 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
                     or component.get("upload_ip")
                     or component.get("ip")
                 ),
+                "trace_examples": _component_trace_examples(
+                    [
+                        {
+                            "display_name": component.get("display_name") or component.get("relative_path"),
+                            "created_at": normalize_text_field(component.get("created_at")),
+                            "modified_at": normalize_text_field(component.get("modified_at")),
+                            "upload_at": normalize_text_field(component.get("upload_at")),
+                            "ca_user": normalize_text_field(component.get("ca_user")),
+                            "terminal_id": normalize_text_field(component.get("terminal_id") or component.get("client_id") or component.get("device_id")),
+                            "ip_address": normalize_text_field(component.get("client_ip") or component.get("upload_ip") or component.get("ip")),
+                        }
+                        for component in components
+                    ]
+                ),
                 "fingerprint_count": len({component.get("sha256") for component in components if component.get("sha256")}),
                 "summary": (
                     "发现平台侧电子痕迹"
@@ -1899,6 +1959,31 @@ def build_timeline_table(signals: ReviewFacts | list[ExtractedSignals]) -> list[
             }
         )
     return rows
+
+
+def _component_trace_examples(profiles: list[dict]) -> list[str]:
+    examples: list[str] = []
+    for row in profiles:
+        display_name = str(row.get("display_name") or row.get("relative_path") or "组件").strip()
+        parts: list[str] = []
+        if row.get("upload_at"):
+            parts.append(f"upload={row['upload_at']}")
+        if row.get("ca_user"):
+            parts.append(f"ca={row['ca_user']}")
+        if row.get("terminal_id"):
+            parts.append(f"terminal={row['terminal_id']}")
+        if row.get("ip_address"):
+            parts.append(f"ip={row['ip_address']}")
+        if not parts:
+            created = row.get("created_at")
+            modified = row.get("modified_at")
+            if created:
+                parts.append(f"created={created}")
+            if modified:
+                parts.append(f"modified={modified}")
+        if parts:
+            examples.append(f"{display_name}[{'；'.join(parts)}]")
+    return examples[:5]
 
 
 def classify_document(name: str, title: str) -> str:

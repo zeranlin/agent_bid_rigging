@@ -409,6 +409,7 @@ def _build_supplier_facts(
         timeline_terminal_ids=_extract_component_field(signal.document.metadata.get("components", []), "terminal_id", "client_id", "device_id"),
         timeline_ip_addresses=_extract_component_field(signal.document.metadata.get("components", []), "client_ip", "upload_ip", "ip"),
         platform_trace_lines=_extract_platform_trace_lines(signal.document.metadata.get("components", [])),
+        component_trace_profiles=_build_component_trace_profiles(signal.document.metadata.get("components", [])),
         file_fingerprints=_build_file_fingerprints(signal),
         section_order_profile=_build_section_order_profile(supplier_section_rows),
         table_structure_profiles=_build_table_structure_profiles(supplier_table_rows),
@@ -660,6 +661,27 @@ def _build_file_fingerprints(signal: ExtractedSignals) -> list[dict]:
             }
         )
     return fingerprints
+
+
+def _build_component_trace_profiles(components: list[dict]) -> list[dict]:
+    profiles: list[dict] = []
+    for component in components:
+        terminal_id = normalize_text_field(component.get("terminal_id") or component.get("client_id") or component.get("device_id"))
+        ip_address = normalize_text_field(component.get("client_ip") or component.get("upload_ip") or component.get("ip"))
+        profile = {
+            "display_name": component.get("display_name") or component.get("relative_path"),
+            "relative_path": component.get("relative_path"),
+            "created_at": normalize_text_field(component.get("created_at")),
+            "modified_at": normalize_text_field(component.get("modified_at")),
+            "upload_at": normalize_text_field(component.get("upload_at")),
+            "ca_user": normalize_text_field(component.get("ca_user")),
+            "terminal_id": terminal_id,
+            "ip_address": ip_address,
+            "sha256": normalize_text_field(component.get("sha256")),
+        }
+        if any(profile.get(key) for key in ("created_at", "modified_at", "upload_at", "ca_user", "terminal_id", "ip_address", "sha256")):
+            profiles.append(profile)
+    return profiles
 
 
 def _build_section_order_profile(section_rows: list[dict]) -> list[str]:

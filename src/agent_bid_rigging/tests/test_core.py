@@ -788,10 +788,14 @@ def test_structure_homology_detects_abnormal_combo_from_file_and_section_profile
 
     assessment = assess_pairs(review_facts)[0]
     titles = {finding.title for finding in assessment.findings}
+    file_finding = next(f for f in assessment.findings if f.title == "文件完全一致")
+    section_finding = next(f for f in assessment.findings if f.title == "章节顺序高度同构")
 
     assert "文件完全一致" in titles
     assert "章节顺序高度同构" in titles
     assert "异常同构结构" in titles
+    assert any("共同文件A.pdf" in line for line in file_finding.evidence)
+    assert any("章节画像示例" in line for line in section_finding.evidence)
     assert assessment.dimension_summary["file_homology"]["matched"] is True
     assert assessment.dimension_summary["file_homology"]["tier"] == "strong"
 
@@ -916,6 +920,7 @@ def test_timeline_table_and_report_include_platform_side_fields() -> None:
     assert timeline_table[0]["terminal_ids"] == ["terminal-1"]
     assert timeline_table[0]["ip_addresses"] == ["10.10.0.8"]
     assert timeline_table[0]["platform_trace_count"] == 1
+    assert "A.pdf[upload=2026-03-20T10:08:00" in timeline_table[0]["trace_examples"][0]
     assert timeline_table[0]["summary"] == "发现平台侧电子痕迹"
 
     points = _build_timeline_points(profiles)
@@ -926,6 +931,7 @@ def test_timeline_table_and_report_include_platform_side_fields() -> None:
     assert "终端/设备标识 1 项" in points[0]
     assert "IP 地址 1 项" in points[0]
     assert "平台侧痕迹 1 条" in points[0]
+    assert "组件级轨迹示例" in points[0]
     assert "平台侧电子痕迹" in opinion
 
 

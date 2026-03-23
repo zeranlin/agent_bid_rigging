@@ -441,7 +441,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="文件完全一致",
                 weight=30,
-                evidence=[f"{_supplier_name(left)} 与 {_supplier_name(right)} 文档级指纹一致"],
+                evidence=[
+                    f"{_supplier_name(left)} 与 {_supplier_name(right)} 文档级指纹一致",
+                    *_shared_component_examples(left, right),
+                ],
             )
         )
         file_hit = True
@@ -450,7 +453,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="文件完全一致",
                 weight=28,
-                evidence=[f"共享组件指纹数: {len(shared_component_hashes)}"],
+                evidence=[
+                    f"共享组件指纹数: {len(shared_component_hashes)}",
+                    *_shared_component_examples(left, right),
+                ],
             )
         )
         file_hit = True
@@ -459,7 +465,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="文件指纹重合",
                 weight=18,
-                evidence=[f"共享组件指纹数: {len(shared_component_hashes)}"],
+                evidence=[
+                    f"共享组件指纹数: {len(shared_component_hashes)}",
+                    *_shared_component_examples(left, right),
+                ],
             )
         )
         file_hit = True
@@ -472,7 +481,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="章节顺序高度同构",
                 weight=12,
-                evidence=[f"章节顺序相似度 {section_similarity:.0%}"],
+                evidence=[
+                    f"章节顺序相似度 {section_similarity:.0%}",
+                    f"章节画像示例: {_section_profile_preview(left_profile)} / {_section_profile_preview(right_profile)}",
+                ],
             )
         )
         section_high = True
@@ -481,7 +493,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="章节顺序相似",
                 weight=6,
-                evidence=[f"章节顺序相似度 {section_similarity:.0%}"],
+                evidence=[
+                    f"章节顺序相似度 {section_similarity:.0%}",
+                    f"章节画像示例: {_section_profile_preview(left_profile)} / {_section_profile_preview(right_profile)}",
+                ],
             )
         )
 
@@ -491,7 +506,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="关键表格结构高度一致",
                 weight=12,
-                evidence=[f"共享关键表格结构签名数: {table_summary['shared_count']}"],
+                evidence=[
+                    f"共享关键表格结构签名数: {table_summary['shared_count']}",
+                    *_table_structure_examples(table_summary),
+                ],
             )
         )
         table_high = True
@@ -500,7 +518,10 @@ def _structure_findings(left: ExtractedSignals | SupplierFacts, right: Extracted
             PairwiseFinding(
                 title="关键表格结构相似",
                 weight=6,
-                evidence=[f"共享关键表格结构轮廓数: {table_summary['shared_count']}"],
+                evidence=[
+                    f"共享关键表格结构轮廓数: {table_summary['shared_count']}",
+                    *_table_structure_examples(table_summary),
+                ],
             )
         )
 
@@ -1171,6 +1192,7 @@ def _table_structure_overlap(left: ExtractedSignals | SupplierFacts, right: Extr
             "high": any(_is_high_table_signature_match(signature) for signature in shared_signatures),
             "similar": True,
             "shared_count": len(shared_signatures),
+            "shared_examples": shared_signatures[:3],
         }
 
     left_shapes = {_table_profile_shape(row) for row in left_profiles}
@@ -1180,7 +1202,60 @@ def _table_structure_overlap(left: ExtractedSignals | SupplierFacts, right: Extr
         "high": False,
         "similar": bool(shared_shapes),
         "shared_count": len(shared_shapes),
+        "shared_examples": shared_shapes[:3],
     }
+
+
+def _shared_component_examples(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[str]:
+    shared = _shared_component_names(left, right)
+    if not shared:
+        return []
+    return [f"共享组件示例: {'、'.join(shared[:3])}"]
+
+
+def _shared_component_names(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[str]:
+    left_names = _component_names_by_hash(left)
+    right_names = _component_names_by_hash(right)
+    shared_hashes = sorted(set(left_names) & set(right_names))
+    names: list[str] = []
+    for sha in shared_hashes:
+        for name in left_names.get(sha, []):
+            if name and name not in names:
+                names.append(name)
+        for name in right_names.get(sha, []):
+            if name and name not in names:
+                names.append(name)
+    return names[:5]
+
+
+def _component_names_by_hash(item: ExtractedSignals | SupplierFacts) -> dict[str, list[str]]:
+    mapping: dict[str, list[str]] = {}
+    if isinstance(item, SupplierFacts):
+        rows = item.file_fingerprints
+    else:
+        rows = item.document.metadata.get("components", [])
+    for row in rows:
+        sha = str(row.get("sha256") or "").strip()
+        if not sha:
+            continue
+        name = str(row.get("display_name") or row.get("relative_path") or "").strip()
+        if not name:
+            continue
+        bucket = mapping.setdefault(sha, [])
+        if name not in bucket:
+            bucket.append(name)
+    return mapping
+
+
+def _section_profile_preview(profile: list[str]) -> str:
+    return " > ".join(profile[:4]) if profile else "无章节画像"
+
+
+def _table_structure_examples(summary: dict[str, object]) -> list[str]:
+    examples = [str(item) for item in (summary.get("shared_examples") or []) if str(item).strip()]
+    if not examples:
+        return []
+    return [f"结构示例: {'；'.join(examples[:2])}"]
 
 
 def _table_profile_shape(row: dict) -> str:
