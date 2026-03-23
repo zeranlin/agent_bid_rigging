@@ -237,6 +237,9 @@ def append_ocr_entity_rows(entity_field_table: list[dict], ocr_rows: list[dict])
         "authorized_manufacturer": "authorized_manufacturers",
         "authorization_issuer": "authorization_issuers",
         "authorization_date": "authorization_dates",
+        "authorization_target": "authorization_targets",
+        "authorized_party": "authorization_targets",
+        "authorization_scope": "authorization_scopes",
         "bid_total_amount": "bid_amounts",
         "address": "addresses",
         "phone": "phones",
@@ -280,6 +283,8 @@ def append_ocr_authorization_rows(authorization_chain_table: list[dict], ocr_row
         table_row.setdefault("authorized_manufacturers", [])
         table_row.setdefault("authorization_issuers", [])
         table_row.setdefault("authorization_dates", [])
+        table_row.setdefault("authorization_targets", [])
+        table_row.setdefault("authorization_scopes", [])
         table_row.setdefault("authorization_mentions", [])
         fields = row.get("fields") or {}
         manufacturer = normalize_text_field(fields.get("manufacturer"))
@@ -294,6 +299,12 @@ def append_ocr_authorization_rows(authorization_chain_table: list[dict], ocr_row
         authorization_date = _normalize_date_text(fields.get("authorization_date"))
         if authorization_date and authorization_date not in table_row["authorization_dates"]:
             table_row["authorization_dates"].append(authorization_date)
+        authorization_target = normalize_text_field(fields.get("authorization_target") or fields.get("authorized_party"))
+        if authorization_target and authorization_target not in table_row["authorization_targets"]:
+            table_row["authorization_targets"].append(authorization_target)
+        authorization_scope = normalize_text_field(fields.get("authorization_scope"))
+        if authorization_scope and authorization_scope not in table_row["authorization_scopes"]:
+            table_row["authorization_scopes"].append(authorization_scope)
         if row.get("doc_type") == "authorization_letter":
             mention = compact_ocr_line(row)
             if mention and mention not in table_row["authorization_mentions"]:
@@ -304,6 +315,8 @@ def append_ocr_authorization_rows(authorization_chain_table: list[dict], ocr_row
             or table_row["authorized_manufacturers"]
             or table_row["authorization_issuers"]
             or table_row["authorization_dates"]
+            or table_row["authorization_targets"]
+            or table_row["authorization_scopes"]
         ):
             table_row["summary"] = "发现授权链关键信息"
 
@@ -393,6 +406,8 @@ def _build_supplier_facts(
         authorized_manufacturers=[],
         authorization_issuers=[],
         authorization_dates=[],
+        authorization_targets=[],
+        authorization_scopes=[],
         section_rows=[dict(row) for row in supplier_section_rows],
         table_rows=[dict(row) for row in supplier_table_rows],
     )
@@ -520,6 +535,22 @@ def _build_supplier_facts(
             source_page,
             confidence,
             prefer_primary=not facts.authorization_dates,
+        )
+        _append_observation(
+            facts.authorization_targets,
+            normalize_text_field(fields.get("authorization_target") or fields.get("authorized_party")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorization_targets,
+        )
+        _append_observation(
+            facts.authorization_scopes,
+            normalize_text_field(fields.get("authorization_scope")),
+            source_document,
+            source_page,
+            confidence,
+            prefer_primary=not facts.authorization_scopes,
         )
         _append_observation(
             facts.brands,
@@ -712,6 +743,28 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
             source_document=source_document,
             source_page=source_page,
             confidence=0.82,
+            source_type="section",
+        )
+
+    authorization_target = _extract_authorization_target_from_profile_text(profile_text)
+    if authorization_target:
+        _promote_primary_observation(
+            facts.authorization_targets,
+            authorization_target,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.8,
+            source_type="section",
+        )
+
+    authorization_scope = _extract_authorization_scope_from_profile_text(profile_text)
+    if authorization_scope:
+        _promote_primary_observation(
+            facts.authorization_scopes,
+            authorization_scope,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=0.78,
             source_type="section",
         )
 
@@ -996,6 +1049,32 @@ def _extract_authorization_date_from_profile_text(text: str) -> str | None:
         match = re.search(pattern, text)
         if match:
             return _normalize_date_text(match.group(1))
+    return None
+
+
+def _extract_authorization_target_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:授权(?:给|予|对象)|被授权(?:单位|人)|授权经销商)\s*[:：]?\s*([^\n]{2,80})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _clean_company_like_value(match.group(1))
+            if value:
+                return value
+    return None
+
+
+def _extract_authorization_scope_from_profile_text(text: str) -> str | None:
+    patterns = (
+        r"(?:授权范围|授权产品|授权内容|授权项目)\s*[:：]?\s*([^\n]{4,120})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = normalize_text_field(match.group(1)).strip(" ：:;；,.，")
+            if value:
+                return value[:120]
     return None
 
 

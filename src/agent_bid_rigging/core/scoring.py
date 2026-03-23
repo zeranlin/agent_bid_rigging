@@ -324,6 +324,22 @@ def _authorization_findings(left: ExtractedSignals | SupplierFacts, right: Extra
             _authorization_dates(right),
         )
     )
+    findings.extend(
+        _shared_field_findings(
+            "授权对象重合",
+            12,
+            _authorization_targets(left),
+            _authorization_targets(right),
+        )
+    )
+    findings.extend(
+        _shared_field_findings(
+            "授权范围重合",
+            10,
+            _authorization_scopes(left),
+            _authorization_scopes(right),
+        )
+    )
     return findings
 
 
@@ -433,7 +449,7 @@ def _dimension_for_finding(title: str) -> str:
         return "text_similarity"
     if title in {"文件完全一致", "文件高度同源", "文件指纹重合"}:
         return "file_homology"
-    if title in {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合"}:
+    if title in {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合", "授权对象重合", "授权范围重合"}:
         return "authorization_chain"
     if title in {"时间轨迹异常接近", "创建修改时间高度重合"}:
         return "timeline_trace"
@@ -445,9 +461,9 @@ def _tier_for_finding(title: str, weight: int) -> str:
         return "strong"
     if title in {"联系人电话重合", "邮箱重合", "投标报价完全一致", "分项报价结构高度一致"}:
         return "strong"
-    if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合"}:
+    if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合", "授权对象重合"}:
         return "medium"
-    if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合"}:
+    if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合", "授权范围重合"}:
         return "medium"
     if title in {"联系人姓名重合", "分项报价税率一致"}:
         return "weak"
@@ -682,4 +698,16 @@ def _authorization_issuers(item: ExtractedSignals | SupplierFacts) -> list[str]:
 def _authorization_dates(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.authorization_dates]
+    return []
+
+
+def _authorization_targets(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorization_targets]
+    return []
+
+
+def _authorization_scopes(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return [fact.value for fact in item.authorization_scopes]
     return []

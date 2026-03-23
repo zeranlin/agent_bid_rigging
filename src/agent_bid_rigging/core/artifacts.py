@@ -432,7 +432,10 @@ def build_risk_score_table(
         pricing = _pricing_score(assessment)
         entity = _entity_score(assessment)
         text_score = _text_similarity_score(assessment)
-        authorization = _finding_weight(assessment, {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合"})
+        authorization = _finding_weight(
+            assessment,
+            {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合", "授权对象重合", "授权范围重合"},
+        )
         timeline = _finding_weight(assessment, {"时间轨迹异常接近", "创建修改时间高度重合"})
         total = assessment.risk_score
 
@@ -1384,6 +1387,8 @@ def build_authorization_chain_table(signals: ReviewFacts | list[ExtractedSignals
             authorized_manufacturers = _observation_values(supplier, "authorized_manufacturers")
             authorization_issuers = _observation_values(supplier, "authorization_issuers")
             authorization_dates = _observation_values(supplier, "authorization_dates")
+            authorization_targets = _observation_values(supplier, "authorization_targets")
+            authorization_scopes = _observation_values(supplier, "authorization_scopes")
             authorization_mentions = _observation_values(supplier, "authorization_mentions")[:20]
             rows.append(
                 {
@@ -1392,10 +1397,12 @@ def build_authorization_chain_table(signals: ReviewFacts | list[ExtractedSignals
                     "authorized_manufacturers": authorized_manufacturers,
                     "authorization_issuers": authorization_issuers,
                     "authorization_dates": authorization_dates,
+                    "authorization_targets": authorization_targets,
+                    "authorization_scopes": authorization_scopes,
                     "authorization_mentions": authorization_mentions,
                     "summary": (
                         "发现授权链关键信息"
-                        if authorization_mentions or manufacturer_mentions or authorized_manufacturers or authorization_issuers or authorization_dates
+                        if authorization_mentions or manufacturer_mentions or authorized_manufacturers or authorization_issuers or authorization_dates or authorization_targets or authorization_scopes
                         else "未发现明确授权链线索"
                     ),
                 }
@@ -1599,7 +1606,7 @@ def _extract_named_values(text: str, field_names: tuple[str, ...]) -> list[str]:
 def _evidence_grade(finding) -> str:
     if finding.title in {"银行账号重合", "联系人电话重合", "邮箱重合", "法定代表人信息重合"}:
         return "A"
-    if "报价" in finding.title or "共享" in finding.title or finding.title in {"特殊计价说明重合"}:
+    if "报价" in finding.title or "共享" in finding.title or finding.title in {"特殊计价说明重合", "授权对象重合", "授权范围重合"}:
         return "B"
     if "文本重合" in finding.title:
         return "C"
@@ -1660,9 +1667,9 @@ def _finding_weight(assessment: PairwiseAssessment, titles: set[str]) -> int:
 
 
 def _authorization_indicator(left: dict, right: dict) -> str:
-    left_auth = set(left.get("manufacturer_mentions", []))
-    right_auth = set(right.get("manufacturer_mentions", []))
-    overlap = left_auth & right_auth
+    left_auth = set(left.get("manufacturer_mentions", [])) | set(left.get("authorized_manufacturers", [])) | set(left.get("authorization_targets", []))
+    right_auth = set(right.get("manufacturer_mentions", [])) | set(right.get("authorized_manufacturers", [])) | set(right.get("authorization_targets", []))
+    overlap = {item for item in (left_auth & right_auth) if item}
     if overlap:
         return f"shared:{len(overlap)}"
     return "none"

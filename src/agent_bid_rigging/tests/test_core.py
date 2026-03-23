@@ -187,6 +187,8 @@ def test_pairwise_scoring_uses_new_review_facts_identity_and_authorization_field
                 "authorized_manufacturer": "测试厂家",
                 "authorization_issuer": "测试厂家股份有限公司",
                 "authorization_date": "2023-12-19",
+                "authorization_target": "内蒙古测试经销商有限公司",
+                "authorization_scope": "电子胃肠镜及配套设备",
             },
             "confidence": 0.95,
         },
@@ -203,6 +205,8 @@ def test_pairwise_scoring_uses_new_review_facts_identity_and_authorization_field
                 "authorized_manufacturer": "测试厂家",
                 "authorization_issuer": "测试厂家股份有限公司",
                 "authorization_date": "2023-12-19",
+                "authorization_target": "内蒙古测试经销商有限公司",
+                "authorization_scope": "电子胃肠镜及配套设备",
             },
             "confidence": 0.95,
         },
@@ -215,6 +219,8 @@ def test_pairwise_scoring_uses_new_review_facts_identity_and_authorization_field
     assert "授权厂家重合" in titles
     assert "授权方重合" in titles
     assert "授权时间重合" in titles
+    assert "授权对象重合" in titles
+    assert "授权范围重合" in titles
     assert assessment.dimension_summary["identity_link"]["matched"] is True
     assert assessment.dimension_summary["identity_link"]["tier"] == "strong"
     assert assessment.dimension_summary["authorization_chain"]["matched"] is True

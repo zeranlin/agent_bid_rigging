@@ -81,6 +81,8 @@ class SupplierFacts:
     authorized_manufacturers: list[FactObservation] = field(default_factory=list)
     authorization_issuers: list[FactObservation] = field(default_factory=list)
     authorization_dates: list[FactObservation] = field(default_factory=list)
+    authorization_targets: list[FactObservation] = field(default_factory=list)
+    authorization_scopes: list[FactObservation] = field(default_factory=list)
     brands: list[FactObservation] = field(default_factory=list)
     models: list[FactObservation] = field(default_factory=list)
     license_numbers: list[FactObservation] = field(default_factory=list)
