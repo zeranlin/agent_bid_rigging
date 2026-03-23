@@ -360,7 +360,7 @@ def build_review_conclusion_table(assessments: list[PairwiseAssessment]) -> dict
 
     for assessment in assessments:
         pair_label = f"{assessment.supplier_a} 与 {assessment.supplier_b}"
-        if assessment.findings:
+        if _assessment_has_actionable_clues(assessment):
             suspicious_clues.append(
                 f"{pair_label} 存在需要进一步核查的可疑线索。"
             )
@@ -759,6 +759,13 @@ def _build_supplier_profiles(
                 "legal_representative": _clean_person_name(_first_or_none(doc.get("legal_representatives", []))),
                 "authorized_representative": _clean_person_name(_first_or_none(doc.get("authorized_representatives", []))),
                 "address": _first_or_none(doc.get("addresses", [])),
+                "authorized_manufacturers": auth_map.get(supplier, {}).get("authorized_manufacturers", [])[:3],
+                "authorization_issuers": auth_map.get(supplier, {}).get("authorization_issuers", [])[:3],
+                "authorization_dates": auth_map.get(supplier, {}).get("authorization_dates", [])[:3],
+                "authorization_targets": auth_map.get(supplier, {}).get("authorization_targets", [])[:3],
+                "authorization_scopes": auth_map.get(supplier, {}).get("authorization_scopes", [])[:3],
+                "license_numbers": auth_map.get(supplier, {}).get("license_numbers", [])[:3],
+                "registration_numbers": auth_map.get(supplier, {}).get("registration_numbers", [])[:3],
                 "authorization_summary": auth_map.get(supplier, {}).get("summary", "未发现明确授权链线索"),
                 "timeline_summary": timeline_map.get(supplier, {}).get("summary", "无组件级时间信息"),
             }
@@ -790,6 +797,13 @@ def _build_supplier_profiles_from_facts(
                 "legal_representative": _clean_person_name(_primary_value(supplier, "legal_representatives")),
                 "authorized_representative": _clean_person_name(_primary_value(supplier, "authorized_representatives")),
                 "address": _primary_value(supplier, "addresses"),
+                "authorized_manufacturers": _observation_values(supplier, "authorized_manufacturers")[:3],
+                "authorization_issuers": _observation_values(supplier, "authorization_issuers")[:3],
+                "authorization_dates": _observation_values(supplier, "authorization_dates")[:3],
+                "authorization_targets": _observation_values(supplier, "authorization_targets")[:3],
+                "authorization_scopes": _observation_values(supplier, "authorization_scopes")[:3],
+                "license_numbers": _observation_values(supplier, "license_numbers")[:3],
+                "registration_numbers": _observation_values(supplier, "registration_numbers")[:3],
                 "authorization_summary": auth_map.get(supplier.supplier, {}).get("summary", "未发现明确授权链线索"),
                 "timeline_summary": timeline_map.get(supplier.supplier, {}).get("summary", "无组件级时间信息"),
             }
@@ -887,16 +901,119 @@ def _build_identity_opinion(risk_score_table: list[dict]) -> str:
 
 
 def _build_authorization_points(profiles: list[dict]) -> list[str]:
-    return [
-        f"{profile['full_name']}授权及资格材料特征：{profile['authorization_summary']}。"
-        for profile in profiles
-    ] or ["当前未提取到可供说明的授权或资格材料线索。"]
+    points: list[str] = []
+    for profile in profiles:
+        authorized_manufacturer = _format_fact_values(profile.get("authorized_manufacturers"))
+        authorization_issuer = _format_fact_values(profile.get("authorization_issuers"))
+        authorization_date = _format_fact_values(profile.get("authorization_dates"))
+        authorization_target = _format_fact_values(profile.get("authorization_targets"))
+        authorization_scope = _format_fact_values(profile.get("authorization_scopes"))
+        registration_number = _format_fact_values(profile.get("registration_numbers"))
+        license_number = _format_fact_values(profile.get("license_numbers"))
+        points.append(
+            f"{profile['full_name']}授权厂家识别为 `{authorized_manufacturer}`，授权方识别为 `{authorization_issuer}`，"
+            f"授权时间识别为 `{authorization_date}`，授权对象识别为 `{authorization_target}`，"
+            f"授权范围识别为 `{authorization_scope}`，注册证号识别为 `{registration_number}`，"
+            f"许可证号识别为 `{license_number}`。"
+        )
+    return points or ["当前未提取到可供说明的授权或资格材料线索。"]
 
 
 def _build_authorization_opinion(profiles: list[dict]) -> str:
-    if any("发现授权/厂家关键词" in profile["authorization_summary"] for profile in profiles):
-        return "现有材料中均可见常规授权或厂家关键词，但尚未发现足以证明同一授权链异常复用的直接证据。"
+    pair_messages: list[str] = []
+    shared_brand_pairs: list[str] = []
+
+    for left, right in combinations(profiles, 2):
+        pair_label = f"{left['full_name']}与{right['full_name']}"
+        shared_manufacturer = _shared_values(left.get("authorized_manufacturers"), right.get("authorized_manufacturers"))
+        shared_issuer = _shared_values(left.get("authorization_issuers"), right.get("authorization_issuers"))
+        shared_date = _shared_values(left.get("authorization_dates"), right.get("authorization_dates"))
+        shared_target = _shared_values(left.get("authorization_targets"), right.get("authorization_targets"))
+        shared_scope = _shared_values(left.get("authorization_scopes"), right.get("authorization_scopes"))
+
+        if shared_manufacturer and not (shared_issuer or shared_date or shared_target or shared_scope):
+            shared_brand_pairs.append(pair_label)
+            continue
+
+        if shared_issuer and shared_date:
+            pair_messages.append(f"{pair_label}在授权方和授权时间上同时存在重叠，需进一步复核授权链是否异常重叠。")
+            continue
+        if shared_target and shared_scope:
+            pair_messages.append(f"{pair_label}在授权对象和授权范围上同时存在重叠，需进一步复核是否存在异常授权安排。")
+            continue
+        if shared_manufacturer and shared_target:
+            pair_messages.append(f"{pair_label}在授权厂家和授权对象上同时存在重叠，需进一步复核经销与授权关系。")
+            continue
+        if shared_manufacturer and shared_date and shared_scope:
+            pair_messages.append(f"{pair_label}在授权厂家、授权时间和授权范围上同时存在重叠，需进一步复核是否存在授权链异常重叠。")
+
+    if pair_messages:
+        return "；".join(pair_messages)
+    if shared_brand_pairs:
+        return (
+            f"{'；'.join(shared_brand_pairs)}涉及相同品牌或厂家。"
+            "在设备类采购中，这种情形可能属于正常竞争，单凭同品牌或同厂家信息不足以认定授权链异常。"
+        )
+    if any(profile.get("authorization_summary") != "未发现明确授权链线索" for profile in profiles):
+        return "现有材料中可见部分授权与资质事实，但暂未发现需单列说明的异常授权重叠组合。"
     return "现有材料未提取到稳定的授权链线索，建议结合原始授权文件和经销体系进一步核查。"
+
+
+def _format_fact_values(values: list[str] | None) -> str:
+    cleaned = [str(value).strip() for value in (values or []) if str(value).strip()]
+    if not cleaned:
+        return "未自动识别"
+    deduped = list(dict.fromkeys(cleaned))[:3]
+    return "、".join(deduped)
+
+
+def _shared_values(left: list[str] | None, right: list[str] | None) -> list[str]:
+    left_set = {str(value).strip() for value in (left or []) if str(value).strip()}
+    right_set = {str(value).strip() for value in (right or []) if str(value).strip()}
+    return sorted(left_set & right_set)
+
+
+def _assessment_has_actionable_clues(assessment: PairwiseAssessment) -> bool:
+    if not assessment.findings:
+        return False
+    titles = {finding.title for finding in assessment.findings}
+    auth_titles = {
+        "授权厂家重合",
+        "授权方重合",
+        "授权时间重合",
+        "授权对象重合",
+        "授权范围重合",
+    }
+    if titles <= auth_titles:
+        return _authorization_titles_form_actionable_combo(titles)
+    return True
+
+
+def _risk_row_has_actionable_clues(row: dict) -> bool:
+    summary = row.get("dimension_summary", {})
+    matched_dimensions = {
+        key
+        for key, item in summary.items()
+        if item.get("matched") and item.get("tier") in {"strong", "medium", "weak"}
+    }
+    if not matched_dimensions:
+        return False
+    if matched_dimensions == {"authorization_chain"}:
+        auth_titles = set(summary.get("authorization_chain", {}).get("finding_titles", []))
+        return _authorization_titles_form_actionable_combo(auth_titles)
+    return True
+
+
+def _authorization_titles_form_actionable_combo(titles: set[str]) -> bool:
+    if {"授权方重合", "授权时间重合"} <= titles:
+        return True
+    if {"授权对象重合", "授权范围重合"} <= titles:
+        return True
+    if {"授权厂家重合", "授权对象重合"} <= titles:
+        return True
+    if {"授权厂家重合", "授权时间重合", "授权范围重合"} <= titles:
+        return True
+    return False
 
 
 def _build_timeline_points(profiles: list[dict]) -> list[str]:
@@ -924,7 +1041,7 @@ def _build_suspicious_points(
     for row in evidence_grade_table:
         evidence_by_pair.setdefault(row["pair"], []).append(row)
     for row in risk_score_table:
-        if row["risk_level"] in {"medium", "high", "critical"}:
+        if row["risk_level"] in {"medium", "high", "critical"} and _risk_row_has_actionable_clues(row):
             pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
             points.append(f"{pair_label}之间存在需要进一步核查的可疑线索。")
             evidence_key = f"{row['supplier_a']} 与 {row['supplier_b']}"

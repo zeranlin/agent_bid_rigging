@@ -9,10 +9,12 @@ from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.core.artifacts import (
+    build_authorization_chain_table,
     build_duplicate_detection_table,
     build_evidence_grade_table,
     build_formal_report,
     build_formal_report_markdown,
+    build_review_conclusion_table,
     build_risk_score_table,
     classify_document,
 )
@@ -574,6 +576,153 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "**围串标判断维度摘要**" in markdown
     assert "文本与方案关联中" in markdown
     assert "主体关联未命中" in markdown
+
+
+def test_authorization_section_treats_shared_manufacturer_as_normal_competition() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/alpha.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权厂家：测试厂家",
+            "fields": {
+                "authorized_manufacturer": "测试厂家",
+            },
+            "confidence": 0.95,
+        },
+        {
+            "supplier": "beta",
+            "source_path": "/tmp/beta.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权厂家：测试厂家",
+            "fields": {
+                "authorized_manufacturer": "测试厂家",
+            },
+            "confidence": 0.95,
+        },
+    ]
+    review_facts = build_review_facts(tender, [left, right], [], ocr_rows)
+    assessments = assess_pairs(review_facts)
+    evidence = build_evidence_grade_table(assessments)
+    risk = build_risk_score_table(assessments, [], [], [], build_authorization_chain_table(review_facts), [])
+    review_conclusion = build_review_conclusion_table(assessments)
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-auth-1",
+            "generated_at": "2026-03-23T12:00:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table=review_conclusion,
+        evidence_grade_table=evidence,
+        risk_score_table=risk,
+        review_facts=review_facts,
+        authorization_chain_table=build_authorization_chain_table(review_facts),
+    )
+    markdown = build_formal_report_markdown(report)
+
+    assert "授权厂家识别为 `测试厂家`" in markdown
+    assert "授权对象识别为 `未自动识别`" in markdown
+    assert "在设备类采购中，这种情形可能属于正常竞争" in markdown
+    assert "主要可疑线索" not in markdown or "授权厂家重合" not in markdown
+    assert report["suspicious_clues"] == []
+
+
+def test_authorization_section_explains_actionable_overlap_combinations() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/alpha.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权书",
+            "fields": {
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
+                "authorization_target": "内蒙古测试经销商有限公司",
+                "authorization_scope": "电子胃肠镜及配套设备",
+            },
+            "confidence": 0.95,
+        },
+        {
+            "supplier": "beta",
+            "source_path": "/tmp/beta.pdf",
+            "page_index": 1,
+            "doc_type": "authorization_letter",
+            "summary": "授权书",
+            "extracted_text": "授权书",
+            "fields": {
+                "authorization_issuer": "测试厂家股份有限公司",
+                "authorization_date": "2023-12-19",
+                "authorization_target": "内蒙古测试经销商有限公司",
+                "authorization_scope": "电子胃肠镜及配套设备",
+            },
+            "confidence": 0.95,
+        },
+    ]
+    review_facts = build_review_facts(tender, [left, right], [], ocr_rows)
+    auth_table = build_authorization_chain_table(review_facts)
+    assessments = assess_pairs(review_facts)
+    evidence = build_evidence_grade_table(assessments)
+    risk = build_risk_score_table(assessments, [], [], [], auth_table, [])
+    review_conclusion = build_review_conclusion_table(assessments)
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-auth-2",
+            "generated_at": "2026-03-23T12:10:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table=review_conclusion,
+        evidence_grade_table=evidence,
+        risk_score_table=risk,
+        review_facts=review_facts,
+        authorization_chain_table=auth_table,
+    )
+    markdown = build_formal_report_markdown(report)
+    opinion = generate_review_opinion(
+        {
+            "run_name": "case-auth-2",
+            "generated_at": "2026-03-23T12:10:00",
+            "suppliers": ["alpha", "beta"],
+            "review_conclusion_table": review_conclusion,
+            "formal_report": report,
+            "pairwise_assessments": [
+                {
+                    "supplier_a": item["supplier_a"],
+                    "supplier_b": item["supplier_b"],
+                    "risk_score": item["total_score"],
+                    "risk_level": item["risk_level"],
+                    "dimension_summary": item["dimension_summary"],
+                    "findings": [],
+                }
+                for item in risk
+            ],
+        },
+        opinion_mode="template",
+    )
+
+    assert auth_table[0]["authorization_targets"] == ["内蒙古测试经销商有限公司"]
+    assert auth_table[0]["authorization_scopes"] == ["电子胃肠镜及配套设备"]
+    assert "授权对象识别为 `内蒙古测试经销商有限公司`" in markdown
+    assert "授权范围识别为 `电子胃肠镜及配套设备`" in markdown
+    assert "需进一步复核授权链是否异常重叠" in markdown or "需进一步复核是否存在异常授权安排" in markdown
+    assert report["suspicious_clues"]
+    assert "授权及资格材料比对" in opinion["document"]
+    assert "需进一步复核授权链是否异常重叠" in opinion["document"] or "需进一步复核是否存在异常授权安排" in opinion["document"]
 
 
 def test_risk_score_table_matches_pairwise_assessment() -> None:
