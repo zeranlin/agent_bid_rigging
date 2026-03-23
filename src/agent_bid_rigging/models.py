@@ -89,6 +89,9 @@ class SupplierFacts:
     registration_numbers: list[FactObservation] = field(default_factory=list)
     authorization_mentions: list[FactObservation] = field(default_factory=list)
     timeline_modified_times: list[str] = field(default_factory=list)
+    file_fingerprints: list[dict[str, Any]] = field(default_factory=list)
+    section_order_profile: list[str] = field(default_factory=list)
+    table_structure_profiles: list[dict[str, Any]] = field(default_factory=list)
     section_rows: list[dict[str, Any]] = field(default_factory=list)
     table_rows: list[dict[str, Any]] = field(default_factory=list)
 

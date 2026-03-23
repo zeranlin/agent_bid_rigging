@@ -568,11 +568,9 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "总分为" not in markdown
     assert "审查日期：2026-03-21 10:00:00" in markdown
     assert "审查人：人工智能审查" in markdown
-    assert "相似片段示例" in markdown
-    assert "培训特点是目的性、针对性、实效性和创新性" in markdown
     assert "附：文本重合证据附表" in markdown
     assert "恒禾.txt / 项目实施方案 / 第120行" in markdown
-    assert "统一模板、行业常见写法或内部规范表述的可能" in markdown
+    assert "一般目录编排或材料类别相似" in markdown
     assert "**围串标判断维度摘要**" in markdown
     assert "文本与方案关联中" in markdown
     assert "主体关联未命中" in markdown
@@ -748,6 +746,148 @@ def test_risk_score_table_matches_pairwise_assessment() -> None:
     assert risk_table[0]["total_score"] == assessment.risk_score
     assert risk_table[0]["risk_level"] == assessment.risk_level
     assert risk_table[0]["dimension_summary"] == assessment.dimension_summary
+
+
+def test_structure_homology_detects_abnormal_combo_from_file_and_section_profiles() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    for supplier in review_facts.suppliers:
+        supplier.file_fingerprints.extend(
+            [
+                {"display_name": "共同文件A.pdf", "relative_path": "共同文件A.pdf", "sha256": "same-1", "size_bytes": 10, "scope": "component"},
+                {"display_name": "共同文件B.pdf", "relative_path": "共同文件B.pdf", "sha256": "same-2", "size_bytes": 11, "scope": "component"},
+            ]
+        )
+        supplier.section_order_profile = ["letter", "quotation", "business_profile", "technical_plan", "implementation_plan"]
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "文件完全一致" in titles
+    assert "章节顺序高度同构" in titles
+    assert "异常同构结构" in titles
+    assert assessment.dimension_summary["file_homology"]["matched"] is True
+    assert assessment.dimension_summary["file_homology"]["tier"] == "strong"
+
+
+def test_structure_homology_keeps_section_similarity_as_auxiliary_signal() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    review_facts.suppliers[0].section_order_profile = ["letter", "quotation", "technical_plan", "implementation_plan"]
+    review_facts.suppliers[1].section_order_profile = ["letter", "quotation", "technical_plan", "implementation_plan"]
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+    review_conclusion = build_review_conclusion_table([assessment])
+
+    assert "章节顺序高度同构" in titles
+    assert "异常同构结构" not in titles
+    assert review_conclusion["suspicious_clues"] == []
+
+
+def test_structure_homology_detects_table_structure_without_forcing_combo() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    right = extract_signals(load_document_from_text("beta", "bid", "投标总报价：120000"))
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    for supplier in review_facts.suppliers:
+        supplier.table_structure_profiles = [
+            {
+                "source_section": "开标一览表",
+                "field_name": "pricing_row",
+                "column_keys": ["amount", "field_name", "item_name", "tax_rate"],
+                "row_count": 2,
+                "signature": "开标一览表|pricing_row|amount,field_name,item_name,tax_rate|2",
+            }
+        ]
+
+    assessment = assess_pairs(review_facts)[0]
+    titles = {finding.title for finding in assessment.findings}
+
+    assert "关键表格结构高度一致" in titles
+    assert "异常同构结构" not in titles
+
+
+def test_formal_report_explains_normal_vs_abnormal_structure_homology() -> None:
+    risk_rows = [
+        {
+            "supplier_a": "甲",
+            "supplier_b": "乙",
+            "total_score": 12,
+            "risk_level": "low",
+            "technical_text_score": 0,
+            "entity_link_score": 0,
+            "pricing_score": 0,
+            "file_homology_score": 6,
+            "authorization_score": 0,
+            "timeline_score": 0,
+            "dimension_summary": {
+                "identity_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "text_similarity": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "file_homology": {"matched": True, "score": 6, "tier": "weak", "finding_titles": ["章节顺序相似"]},
+                "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+            },
+            "explanation": "结构支持=章节顺序相似",
+        },
+        {
+            "supplier_a": "甲",
+            "supplier_b": "丙",
+            "total_score": 32,
+            "risk_level": "medium",
+            "technical_text_score": 0,
+            "entity_link_score": 0,
+            "pricing_score": 0,
+            "file_homology_score": 20,
+            "authorization_score": 0,
+            "timeline_score": 0,
+            "dimension_summary": {
+                "identity_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "pricing_link": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "text_similarity": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "file_homology": {"matched": True, "score": 20, "tier": "strong", "finding_titles": ["文件指纹重合", "章节顺序高度同构", "异常同构结构"]},
+                "authorization_chain": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+                "timeline_trace": {"matched": False, "score": 0, "tier": "none", "finding_titles": []},
+            },
+            "explanation": "结构支持=文件指纹重合；章节顺序高度同构；异常同构结构",
+        },
+    ]
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-structure-1",
+            "generated_at": "2026-03-23T14:00:00",
+            "input_summary": {"supplier_names": ["甲", "乙", "丙"], "tender_count": 1, "bid_count": 3},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table={
+            "verified_facts": [],
+            "suspicious_clues": ["甲 与 丙 存在需要进一步核查的可疑线索。"],
+            "exclusionary_factors": ["甲 与 乙 未发现明显异常信号。"],
+            "recommendations": ["补充核查。"],
+        },
+        evidence_grade_table=[],
+        risk_score_table=risk_rows,
+        structure_similarity_table=[
+            {"supplier_a": "甲", "supplier_b": "乙", "category_overlap_ratio": 0.8},
+            {"supplier_a": "甲", "supplier_b": "丙", "category_overlap_ratio": 0.85},
+        ],
+        section_similarity_table=[],
+        bid_documents=[
+            {"document": {"name": "甲", "text": "甲公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+            {"document": {"name": "乙", "text": "乙公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+            {"document": {"name": "丙", "text": "丙公司"}, "phones": [], "emails": [], "bank_accounts": [], "legal_representatives": [], "addresses": []},
+        ],
+    )
+    markdown = build_formal_report_markdown(report)
+
+    assert "结构编排存在相似性" in markdown
+    assert "需进一步复核是否存在同底稿加工或异常同构制作" in markdown
 
 
 def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> None:

@@ -179,3 +179,52 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].authorization_scopes[0].value == "电子胃肠镜及配套设备"
     assert review_facts.suppliers[0].company_names[0].is_primary is True
     assert review_facts.suppliers[0].company_names[0].value == "内蒙古阿尔法科技有限公司"
+
+
+def test_build_review_facts_carries_structure_profiles() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))
+    signal.document.metadata["components"] = [
+        {
+            "display_name": "开标一览表.pdf",
+            "relative_path": "开标一览表.pdf",
+            "sha256": "abc123",
+            "size_bytes": 128,
+        }
+    ]
+    section_rows = [
+        {
+            "supplier": "alpha",
+            "title": "一、投标函",
+            "family": "letter",
+            "start_page": 1,
+            "end_page": 1,
+        },
+        {
+            "supplier": "alpha",
+            "title": "二、开标一览表",
+            "family": "quotation",
+            "start_page": 2,
+            "end_page": 2,
+        },
+    ]
+    table_rows = [
+        {
+            "supplier": "alpha",
+            "field_name": "pricing_row",
+            "table_type": "quotation_table",
+            "source_section": "二、开标一览表",
+            "item_name": "系统实施报价",
+            "amount": "100000.00",
+            "tax_rate": "13%",
+            "pricing_note": "含税",
+        }
+    ]
+    review_facts = build_review_facts(tender, [signal], [], [], section_rows, table_rows)
+    supplier = review_facts.suppliers[0]
+
+    assert supplier.file_fingerprints[0]["scope"] == "document"
+    assert any(item["scope"] == "component" and item["sha256"] == "abc123" for item in supplier.file_fingerprints)
+    assert supplier.section_order_profile == ["letter", "quotation"]
+    assert supplier.table_structure_profiles
+    assert supplier.table_structure_profiles[0]["source_section"] == "二、开标一览表"

@@ -163,3 +163,5 @@ def test_review_facts_extract_long_pdf_profile_fields(tmp_path: Path) -> None:
     assert _primary_value(supplier_map["C"], "company_names") == "投标人 C"
     assert _primary_value(supplier_map["C"], "phones") == "*******6767"
     assert "中关村东路" in (_primary_value(supplier_map["C"], "addresses") or "")
+    assert supplier_map["A"].section_order_profile
+    assert supplier_map["A"].table_structure_profiles

@@ -427,6 +427,11 @@ def build_risk_score_table(
                 "文件完全一致",
                 "文件高度同源",
                 "文件指纹重合",
+                "章节顺序高度同构",
+                "章节顺序相似",
+                "关键表格结构高度一致",
+                "关键表格结构相似",
+                "异常同构结构",
             },
         )
         pricing = _pricing_score(assessment)
@@ -457,6 +462,7 @@ def build_risk_score_table(
                     f"结构相似度={structure_row.get('category_overlap_ratio', 0)}, "
                     f"重复文件数={duplicate_row.get('duplicate_count', 0)}, "
                     f"文本相似度={text_row.get('full_text_similarity', 0)}, "
+                    f"结构支持={_structure_indicator(assessment)}, "
                     f"授权支持={_authorization_indicator(auth_map.get(assessment.supplier_a, {}), auth_map.get(assessment.supplier_b, {}))}, "
                     f"时间支持={_timeline_indicator(timeline_map.get(assessment.supplier_a, {}), timeline_map.get(assessment.supplier_b, {}))}"
                 ),
@@ -842,23 +848,27 @@ def _build_structure_summary(
             "opinion": "结构比对信息不足，暂不作单独判断。",
         }
     avg_overlap = sum(row["category_overlap_ratio"] for row in structure_similarity_table) / len(structure_similarity_table)
-    high_pairs = [row for row in risk_score_table if row["technical_text_score"] > 0]
     points = [
         f"各投标文件目录结构和材料类别存在一定相似性，整体上有约{_overlap_ratio_text(avg_overlap)}的材料类别可相互对应。",
-        "该类结构相似性在电子采购平台标准模板场景下具有一定普遍性，应结合非模板文本和主体信息综合判断。",
+        "一般目录编排或材料类别相似，在平台模板化申报场景下具有一定普遍性，应结合文件指纹、关键表格结构和其他维度综合判断。",
     ]
-    for row in high_pairs[:3]:
-        pair_key = f"{row['supplier_a']} 与 {row['supplier_b']}"
-        points.append(
-            f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}在实施方案、培训方案或售后服务等内容中存在相似文本片段。"
-        )
-        snippets = _text_overlap_snippets_for_pair(pair_key, evidence_grade_table)
-        if snippets:
-            points.append(
-                f"{_pair_display(row['supplier_a'], row['supplier_b'], supplier_name_map)}相似片段示例："
-                + "；".join(f"`{snippet}`" for snippet in snippets[:2])
-                + "。"
-            )
+    for row in risk_score_table:
+        pair_label = _pair_display(row["supplier_a"], row["supplier_b"], supplier_name_map)
+        homology_titles = row.get("dimension_summary", {}).get("file_homology", {}).get("finding_titles", [])
+        title_set = set(homology_titles)
+        if "异常同构结构" in title_set:
+            points.append(f"{pair_label}同时出现文件指纹、章节顺序或关键表格结构的组合命中，需进一步复核是否存在同底稿加工或异常同构制作。")
+            continue
+        if "文件完全一致" in title_set or "文件指纹重合" in title_set:
+            points.append(f"{pair_label}存在文件指纹命中，提示部分材料可能存在同源或直接复用情形。")
+        if "章节顺序高度同构" in title_set:
+            points.append(f"{pair_label}章节顺序高度同构，但仍需结合文件指纹或关键表格结构进一步判断是否属于异常同构。")
+        elif "章节顺序相似" in title_set:
+            points.append(f"{pair_label}结构编排存在相似性，目前更接近目录响应习惯相似，单独不足以认定异常。")
+        if "关键表格结构高度一致" in title_set:
+            points.append(f"{pair_label}关键表格结构高度一致，需结合文件指纹或章节顺序继续复核。")
+        elif "关键表格结构相似" in title_set:
+            points.append(f"{pair_label}关键表格结构存在相似性，暂作为结构层面的辅助线索。")
     for row in sorted(section_similarity_table, key=lambda item: item["similarity"], reverse=True)[:4]:
         if row["similarity"] < 0.75:
             continue
@@ -873,8 +883,7 @@ def _build_structure_summary(
         )
     if section_similarity_table and not any(row["similarity"] >= 0.75 for row in section_similarity_table):
         points.append("对技术方案、实施方案和培训方案进行章节级比对后，当前未发现达到高相似度阈值的章节组合。")
-    points.append("上述相似表述多位于项目实施方案、培训方案和售后服务承诺部分，存在统一模板、行业常见写法或内部规范表述的可能。")
-    opinion = "投标文件框架相似具有模板化解释空间。对于相似文本片段，应结合主体关联、报价形成、授权链和原始电子文件等证据综合判断，不能仅凭文本相似直接作出定性。"
+    opinion = "结构同源维度应优先看文件指纹、章节顺序和关键表格结构的组合关系。单独的目录相似或表格结构相似通常仅反映响应习惯接近，只有形成组合异常时，才宜进一步复核是否存在同底稿加工或异常同构制作。"
     return {"points": points, "opinion": opinion}
 
 
@@ -986,6 +995,14 @@ def _assessment_has_actionable_clues(assessment: PairwiseAssessment) -> bool:
     }
     if titles <= auth_titles:
         return _authorization_titles_form_actionable_combo(titles)
+    non_actionable_structure_titles = {
+        "章节顺序高度同构",
+        "章节顺序相似",
+        "关键表格结构高度一致",
+        "关键表格结构相似",
+    }
+    if titles <= non_actionable_structure_titles:
+        return False
     return True
 
 
@@ -1001,6 +1018,15 @@ def _risk_row_has_actionable_clues(row: dict) -> bool:
     if matched_dimensions == {"authorization_chain"}:
         auth_titles = set(summary.get("authorization_chain", {}).get("finding_titles", []))
         return _authorization_titles_form_actionable_combo(auth_titles)
+    if matched_dimensions == {"file_homology"}:
+        structure_titles = set(summary.get("file_homology", {}).get("finding_titles", []))
+        if structure_titles <= {
+            "章节顺序高度同构",
+            "章节顺序相似",
+            "关键表格结构高度一致",
+            "关键表格结构相似",
+        }:
+            return False
     return True
 
 
@@ -1790,6 +1816,26 @@ def _authorization_indicator(left: dict, right: dict) -> str:
     if overlap:
         return f"shared:{len(overlap)}"
     return "none"
+
+
+def _structure_indicator(assessment: PairwiseAssessment) -> str:
+    titles = [
+        finding.title
+        for finding in assessment.findings
+        if finding.title
+        in {
+            "文件完全一致",
+            "文件指纹重合",
+            "章节顺序高度同构",
+            "章节顺序相似",
+            "关键表格结构高度一致",
+            "关键表格结构相似",
+            "异常同构结构",
+        }
+    ]
+    if not titles:
+        return "none"
+    return "；".join(titles[:4])
 
 
 def _timeline_indicator(left: dict, right: dict) -> str:

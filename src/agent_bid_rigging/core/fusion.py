@@ -403,6 +403,9 @@ def _build_supplier_facts(
         bid_amounts=_build_amount_observations(signal.bid_amounts, signal.document.path),
         pricing_rows=[],
         timeline_modified_times=_extract_modified_times(signal.document.metadata.get("components", [])),
+        file_fingerprints=_build_file_fingerprints(signal),
+        section_order_profile=_build_section_order_profile(supplier_section_rows),
+        table_structure_profiles=_build_table_structure_profiles(supplier_table_rows),
         authorized_manufacturers=[],
         authorization_issuers=[],
         authorization_dates=[],
@@ -617,6 +620,108 @@ def _build_supplier_facts(
             )
 
     return facts
+
+
+def _build_file_fingerprints(signal: ExtractedSignals) -> list[dict]:
+    fingerprints: list[dict] = [
+        {
+            "display_name": Path(signal.document.path).name,
+            "relative_path": Path(signal.document.path).name,
+            "sha256": signal.text_hash,
+            "size_bytes": signal.document.metadata.get("size_bytes"),
+            "scope": "document",
+        }
+    ]
+    for component in signal.document.metadata.get("components", []):
+        sha256 = component.get("sha256")
+        if not sha256:
+            continue
+        fingerprints.append(
+            {
+                "display_name": component.get("display_name"),
+                "relative_path": component.get("relative_path"),
+                "sha256": sha256,
+                "size_bytes": component.get("size_bytes"),
+                "scope": "component",
+            }
+        )
+    return fingerprints
+
+
+def _build_section_order_profile(section_rows: list[dict]) -> list[str]:
+    ordered_rows = sorted(
+        section_rows,
+        key=lambda row: (
+            row.get("start_page") or 10**9,
+            row.get("end_page") or 10**9,
+            str(row.get("title") or ""),
+        ),
+    )
+    profile: list[str] = []
+    for row in ordered_rows:
+        family = normalize_text_field(row.get("family"))
+        title = normalize_text_field(row.get("title"))
+        label = family or _normalize_section_label(title)
+        if label:
+            profile.append(label)
+    return profile
+
+
+def _build_table_structure_profiles(table_rows: list[dict]) -> list[dict]:
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in table_rows:
+        source_section = normalize_text_field(row.get("source_section")) or normalize_text_field(row.get("table_type")) or "unknown"
+        field_name = normalize_text_field(row.get("field_name")) or "unknown"
+        grouped.setdefault((source_section, field_name), []).append(row)
+
+    profiles: list[dict] = []
+    for (source_section, field_name), rows in sorted(grouped.items()):
+        column_keys = sorted(
+            {
+                key
+                for row in rows
+                for key, value in row.items()
+                if key
+                in {
+                    "item_name",
+                    "amount",
+                    "tax_rate",
+                    "pricing_note",
+                    "is_total_row",
+                    "field_name",
+                    "table_type",
+                }
+                and value not in (None, "", False)
+            }
+        )
+        row_count = len(rows)
+        signature = "|".join(
+            [
+                _normalize_section_label(source_section) or source_section,
+                field_name,
+                ",".join(column_keys),
+                str(row_count),
+            ]
+        )
+        profiles.append(
+            {
+                "source_section": source_section,
+                "field_name": field_name,
+                "column_keys": column_keys,
+                "row_count": row_count,
+                "signature": signature,
+            }
+        )
+    return profiles
+
+
+def _normalize_section_label(value: str) -> str:
+    text = normalize_text_field(value)
+    if not text:
+        return ""
+    text = re.sub(r"^[一二三四五六七八九十0-9]+\s*[\.、)]\s*", "", text)
+    text = re.sub(r"^[0-9]+(?:\.[0-9]+)*\s*", "", text)
+    return text.strip()
 
 
 def _build_text_observations(values: list[str], source_document: str) -> list[FactObservation]:

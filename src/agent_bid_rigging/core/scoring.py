@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from difflib import SequenceMatcher
 from itertools import combinations
 import re
 
@@ -120,6 +121,7 @@ def assess_pairs(signals: ReviewFacts | list[ExtractedSignals]) -> list[Pairwise
         findings.extend(_price_findings(left, right))
         findings.extend(_pricing_row_findings(left, right))
         findings.extend(_authorization_findings(left, right))
+        findings.extend(_structure_findings(left, right))
         findings.extend(_pair_only_line_findings(left, right, global_line_counts))
 
         score = sum(finding.weight for finding in findings)
@@ -343,6 +345,95 @@ def _authorization_findings(left: ExtractedSignals | SupplierFacts, right: Extra
     return findings
 
 
+def _structure_findings(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> list[PairwiseFinding]:
+    findings: list[PairwiseFinding] = []
+    file_hit = False
+    section_high = False
+    table_high = False
+
+    left_doc_hash = _document_fingerprint(left)
+    right_doc_hash = _document_fingerprint(right)
+    shared_component_hashes = sorted(_component_fingerprints(left) & _component_fingerprints(right))
+    if left_doc_hash and right_doc_hash and left_doc_hash == right_doc_hash:
+        findings.append(
+            PairwiseFinding(
+                title="文件完全一致",
+                weight=30,
+                evidence=[f"{_supplier_name(left)} 与 {_supplier_name(right)} 文档级指纹一致"],
+            )
+        )
+        file_hit = True
+    elif len(shared_component_hashes) >= 2:
+        findings.append(
+            PairwiseFinding(
+                title="文件完全一致",
+                weight=28,
+                evidence=[f"共享组件指纹数: {len(shared_component_hashes)}"],
+            )
+        )
+        file_hit = True
+    elif shared_component_hashes:
+        findings.append(
+            PairwiseFinding(
+                title="文件指纹重合",
+                weight=18,
+                evidence=[f"共享组件指纹数: {len(shared_component_hashes)}"],
+            )
+        )
+        file_hit = True
+
+    left_profile = _section_order_profile(left)
+    right_profile = _section_order_profile(right)
+    section_similarity = _sequence_similarity(left_profile, right_profile)
+    if min(len(left_profile), len(right_profile)) >= 4 and section_similarity >= 0.9:
+        findings.append(
+            PairwiseFinding(
+                title="章节顺序高度同构",
+                weight=12,
+                evidence=[f"章节顺序相似度 {section_similarity:.0%}"],
+            )
+        )
+        section_high = True
+    elif min(len(left_profile), len(right_profile)) >= 3 and section_similarity >= 0.75:
+        findings.append(
+            PairwiseFinding(
+                title="章节顺序相似",
+                weight=6,
+                evidence=[f"章节顺序相似度 {section_similarity:.0%}"],
+            )
+        )
+
+    table_summary = _table_structure_overlap(left, right)
+    if table_summary["high"]:
+        findings.append(
+            PairwiseFinding(
+                title="关键表格结构高度一致",
+                weight=12,
+                evidence=[f"共享关键表格结构签名数: {table_summary['shared_count']}"],
+            )
+        )
+        table_high = True
+    elif table_summary["similar"]:
+        findings.append(
+            PairwiseFinding(
+                title="关键表格结构相似",
+                weight=6,
+                evidence=[f"共享关键表格结构轮廓数: {table_summary['shared_count']}"],
+            )
+        )
+
+    if (file_hit and section_high) or (file_hit and table_high) or (section_high and table_high):
+        findings.append(
+            PairwiseFinding(
+                title="异常同构结构",
+                weight=20,
+                evidence=[_abnormal_homology_reason(file_hit, section_high, table_high)],
+            )
+        )
+
+    return findings
+
+
 def _is_template_like_overlap(line: str, left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> bool:
     if any(pattern in line for pattern in TEMPLATE_OVERLAP_PATTERNS):
         return True
@@ -447,7 +538,7 @@ def _dimension_for_finding(title: str) -> str:
         return "pricing_link"
     if "文本重合" in title:
         return "text_similarity"
-    if title in {"文件完全一致", "文件高度同源", "文件指纹重合"}:
+    if title in {"文件完全一致", "文件高度同源", "文件指纹重合", "章节顺序高度同构", "章节顺序相似", "关键表格结构高度一致", "关键表格结构相似", "异常同构结构"}:
         return "file_homology"
     if title in {"授权链重合", "授权材料异常一致", "授权厂家重合", "授权方重合", "授权时间重合", "授权对象重合", "授权范围重合"}:
         return "authorization_chain"
@@ -459,13 +550,13 @@ def _dimension_for_finding(title: str) -> str:
 def _tier_for_finding(title: str, weight: int) -> str:
     if title in {"统一社会信用代码重合", "银行账号重合"}:
         return "strong"
-    if title in {"联系人电话重合", "邮箱重合", "投标报价完全一致", "分项报价结构高度一致"}:
+    if title in {"联系人电话重合", "邮箱重合", "投标报价完全一致", "分项报价结构高度一致", "文件完全一致", "文件指纹重合", "异常同构结构"}:
         return "strong"
-    if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合", "授权对象重合"}:
+    if title in {"法定代表人信息重合", "授权厂家重合", "授权方重合", "授权对象重合", "章节顺序高度同构", "关键表格结构高度一致"}:
         return "medium"
     if title in {"授权代表信息重合", "地址信息重合", "投标报价极度接近", "分项报价结构相似", "授权时间重合", "特殊计价说明重合", "授权范围重合"}:
         return "medium"
-    if title in {"联系人姓名重合", "分项报价税率一致"}:
+    if title in {"联系人姓名重合", "分项报价税率一致", "章节顺序相似", "关键表格结构相似"}:
         return "weak"
     if "文本重合" in title:
         return "medium" if weight >= 20 else "weak"
@@ -711,3 +802,99 @@ def _authorization_scopes(item: ExtractedSignals | SupplierFacts) -> list[str]:
     if isinstance(item, SupplierFacts):
         return [fact.value for fact in item.authorization_scopes]
     return []
+
+
+def _document_fingerprint(item: ExtractedSignals | SupplierFacts) -> str | None:
+    if isinstance(item, SupplierFacts):
+        for row in item.file_fingerprints:
+            if row.get("scope") == "document" and row.get("sha256"):
+                return str(row["sha256"])
+        return item.text_hash or None
+    return item.text_hash or None
+
+
+def _component_fingerprints(item: ExtractedSignals | SupplierFacts) -> set[str]:
+    if isinstance(item, SupplierFacts):
+        return {
+            str(row["sha256"])
+            for row in item.file_fingerprints
+            if row.get("scope") == "component" and row.get("sha256")
+        }
+    return {
+        str(component["sha256"])
+        for component in item.document.metadata.get("components", [])
+        if component.get("sha256")
+    }
+
+
+def _section_order_profile(item: ExtractedSignals | SupplierFacts) -> list[str]:
+    if isinstance(item, SupplierFacts):
+        return list(item.section_order_profile)
+    return []
+
+
+def _sequence_similarity(left: list[str], right: list[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return SequenceMatcher(None, "|".join(left), "|".join(right)).ratio()
+
+
+def _table_structure_profiles(item: ExtractedSignals | SupplierFacts) -> list[dict]:
+    if isinstance(item, SupplierFacts):
+        return list(item.table_structure_profiles)
+    return []
+
+
+def _table_structure_overlap(left: ExtractedSignals | SupplierFacts, right: ExtractedSignals | SupplierFacts) -> dict[str, object]:
+    left_profiles = _table_structure_profiles(left)
+    right_profiles = _table_structure_profiles(right)
+    if not left_profiles or not right_profiles:
+        return {"high": False, "similar": False, "shared_count": 0}
+
+    left_signatures = {str(row.get("signature")) for row in left_profiles if row.get("signature")}
+    right_signatures = {str(row.get("signature")) for row in right_profiles if row.get("signature")}
+    shared_signatures = sorted(left_signatures & right_signatures)
+    if shared_signatures:
+        return {
+            "high": any(_is_high_table_signature_match(signature) for signature in shared_signatures),
+            "similar": True,
+            "shared_count": len(shared_signatures),
+        }
+
+    left_shapes = {_table_profile_shape(row) for row in left_profiles}
+    right_shapes = {_table_profile_shape(row) for row in right_profiles}
+    shared_shapes = [shape for shape in sorted(left_shapes & right_shapes) if shape]
+    return {
+        "high": False,
+        "similar": bool(shared_shapes),
+        "shared_count": len(shared_shapes),
+    }
+
+
+def _table_profile_shape(row: dict) -> str:
+    source_section = str(row.get("source_section") or "")
+    field_name = str(row.get("field_name") or "")
+    column_keys = ",".join(sorted(str(value) for value in row.get("column_keys", [])))
+    return f"{source_section}|{field_name}|{column_keys}"
+
+
+def _is_high_table_signature_match(signature: str) -> bool:
+    parts = signature.split("|")
+    if len(parts) < 4:
+        return False
+    try:
+        row_count = int(parts[-1])
+    except ValueError:
+        return False
+    return row_count >= 2
+
+
+def _abnormal_homology_reason(file_hit: bool, section_high: bool, table_high: bool) -> str:
+    parts: list[str] = []
+    if file_hit:
+        parts.append("文件指纹命中")
+    if section_high:
+        parts.append("章节顺序高度同构")
+    if table_high:
+        parts.append("关键表格结构高度一致")
+    return "；".join(parts) + "，需进一步复核是否存在同底稿加工或异常同构制作"
