@@ -631,6 +631,7 @@ def _build_supplier_facts(
     facts.authorized_representatives = _filter_legal_observations(facts.authorized_representatives)
     facts.addresses = _filter_address_observations(facts.addresses)
     facts.unified_social_credit_codes = _filter_credit_code_observations(facts.unified_social_credit_codes)
+    _resolve_identity_fact_primaries(facts)
 
     return facts
 
@@ -936,6 +937,7 @@ def _augment_supplier_profile_observations(facts: SupplierFacts) -> None:
     facts.authorized_representatives = _filter_legal_observations(facts.authorized_representatives)
     facts.addresses = _filter_address_observations(facts.addresses)
     facts.unified_social_credit_codes = _filter_credit_code_observations(facts.unified_social_credit_codes)
+    _resolve_identity_fact_primaries(facts)
 
 
 def _build_profile_text(facts: SupplierFacts) -> str:
@@ -971,7 +973,16 @@ def _append_observation(
 ) -> None:
     if not value:
         return
-    if any(item.value == value for item in bucket):
+    existing = next((item for item in bucket if item.value == value), None)
+    if existing is not None:
+        _maybe_upgrade_observation(
+            existing,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=confidence,
+            source_type="ocr",
+            prefer_primary=prefer_primary,
+        )
         return
     bucket.append(
         FactObservation(
@@ -997,7 +1008,16 @@ def _append_capability_observation(
 ) -> None:
     if not value:
         return
-    if any(item.value == value for item in bucket):
+    existing = next((item for item in bucket if item.value == value), None)
+    if existing is not None:
+        _maybe_upgrade_observation(
+            existing,
+            source_document=source_document,
+            source_page=source_page,
+            confidence=confidence,
+            source_type=source_type,
+            prefer_primary=prefer_primary,
+        )
         return
     bucket.append(
         FactObservation(
@@ -1043,6 +1063,31 @@ def _promote_primary_observation(
             is_primary=True,
         ),
     )
+
+
+def _maybe_upgrade_observation(
+    item: FactObservation,
+    *,
+    source_document: str,
+    source_page: int | None,
+    confidence: float | None,
+    source_type: str,
+    prefer_primary: bool,
+) -> None:
+    candidate = FactObservation(
+        value=item.value,
+        source_type=source_type,
+        source_document=source_document,
+        source_page=source_page,
+        confidence=confidence,
+        is_primary=prefer_primary,
+    )
+    if _observation_rank(candidate) > _observation_rank(item):
+        item.source_document = source_document
+        item.source_page = source_page
+        item.confidence = confidence
+        item.source_type = source_type
+    item.is_primary = item.is_primary or prefer_primary
 
 
 def _extract_modified_times(components: list[dict]) -> list[str]:
@@ -1347,6 +1392,54 @@ def _rebuild_primary(observations: list[FactObservation]) -> list[FactObservatio
     if not has_primary:
         observations[0].is_primary = True
     return observations
+
+
+def _resolve_identity_fact_primaries(facts: SupplierFacts) -> None:
+    for field_name in (
+        "company_names",
+        "phones",
+        "emails",
+        "bank_accounts",
+        "contact_names",
+        "unified_social_credit_codes",
+        "legal_representatives",
+        "authorized_representatives",
+        "addresses",
+    ):
+        bucket = getattr(facts, field_name)
+        if not bucket:
+            continue
+        winner = max(bucket, key=_observation_rank)
+        for item in bucket:
+            item.is_primary = item is winner
+
+
+def _observation_rank(item: FactObservation) -> tuple[float, int, int, int]:
+    confidence = item.confidence if item.confidence is not None else _default_confidence(item.source_type)
+    source_priority = _source_priority(item.source_type)
+    primary_hint = 1 if item.is_primary else 0
+    page_rank = -(item.source_page or 10**6)
+    return (float(source_priority), confidence, primary_hint, page_rank)
+
+
+def _default_confidence(source_type: str) -> float:
+    defaults = {
+        "section": 0.90,
+        "table": 0.84,
+        "text": 0.76,
+        "ocr": 0.68,
+    }
+    return defaults.get(source_type, 0.60)
+
+
+def _source_priority(source_type: str) -> int:
+    priorities = {
+        "section": 4,
+        "table": 3,
+        "text": 2,
+        "ocr": 1,
+    }
+    return priorities.get(source_type, 0)
 
 
 def _looks_like_company_name(value: str) -> bool:

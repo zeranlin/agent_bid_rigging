@@ -181,6 +181,38 @@ def test_build_review_facts_merges_text_and_ocr_into_unified_supplier_facts() ->
     assert review_facts.suppliers[0].company_names[0].value == "内蒙古阿尔法科技有限公司"
 
 
+def test_build_review_facts_prefers_higher_confidence_identity_source() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
+    signal = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "内蒙古阿尔法科技有限公司\n法定代表人：张三\n联系人：王小明\n投标总报价：100000",
+        )
+    )
+    ocr_rows = [
+        {
+            "supplier": "alpha",
+            "source_path": "/tmp/a.pdf",
+            "page_index": 6,
+            "doc_type": "business_license",
+            "fields": {
+                "legal_representative": "李四",
+                "contact_name": "王小明先生",
+            },
+            "confidence": 0.55,
+        }
+    ]
+
+    review_facts = build_review_facts(tender, [signal], [], ocr_rows)
+    supplier = review_facts.suppliers[0]
+
+    assert supplier.legal_representatives[0].value == "张三"
+    assert supplier.legal_representatives[0].is_primary is True
+    assert supplier.legal_representatives[0].source_type in {"section", "text"}
+    assert [item.value for item in supplier.contact_names] == ["王小明"]
+
+
 def test_build_review_facts_carries_structure_profiles() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：测试项目")
     signal = extract_signals(load_document_from_text("alpha", "bid", "投标总报价：100000"))

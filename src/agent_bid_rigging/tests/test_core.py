@@ -1066,6 +1066,45 @@ def test_formal_report_identity_section_explains_candidate_conflicts() -> None:
     assert "地址另有候选值 `中国呼和浩特市新城区示例路1号`" in markdown
 
 
+def test_formal_report_identity_section_explains_source_confidence_and_role_resolution() -> None:
+    tender = load_document_from_text("tender", "tender", "项目名称：设备采购")
+    left = extract_signals(
+        load_document_from_text(
+            "alpha",
+            "bid",
+            "内蒙古阿尔法科技有限公司\n法定代表人：张三\n联系人：李四\n委托代理人：李四\n统一社会信用代码：91150105MA0ABCDE1X\n地址：呼和浩特市新城区示例路1号\n投标报价：100000",
+        )
+    )
+    right = extract_signals(
+        load_document_from_text(
+            "beta",
+            "bid",
+            "内蒙古贝塔科技有限公司\n法定代表人：王五\n联系人：赵六\n地址：包头市昆都仑区示例路2号\n投标报价：120000",
+        )
+    )
+    review_facts = build_review_facts(tender, [left, right], [], [])
+    report = build_formal_report(
+        case_manifest={
+            "case_id": "case-identity-source-note",
+            "generated_at": "2026-03-23T20:30:00",
+            "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+            "source_paths": {},
+        },
+        document_catalog=[],
+        review_conclusion_table=build_review_conclusion_table(assess_pairs(review_facts)),
+        evidence_grade_table=build_evidence_grade_table(assess_pairs(review_facts)),
+        risk_score_table=build_risk_score_table(assess_pairs(review_facts), [], [], [], [], []),
+        review_facts=review_facts,
+        authorization_chain_table=build_authorization_chain_table(review_facts),
+    )
+    markdown = build_formal_report_markdown(report)
+
+    assert "主体字段主采纳依据" in markdown
+    assert "法定代表人主采纳来源为" in markdown
+    assert "统一社会信用代码主采纳来源为" in markdown
+    assert "联系人与授权代表识别为同一人" in markdown
+
+
 def test_template_like_service_lines_do_not_trigger_text_overlap_finding() -> None:
     left = extract_signals(
         load_document_from_text(

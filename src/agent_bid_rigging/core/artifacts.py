@@ -78,6 +78,16 @@ def _primary_source(supplier: SupplierFacts, field_name: str) -> tuple[str | Non
     return observations[0].source_document, observations[0].source_page
 
 
+def _primary_observation(supplier: SupplierFacts, field_name: str):
+    observations = getattr(supplier, field_name)
+    if not observations:
+        return None
+    for observation in observations:
+        if observation.is_primary:
+            return observation
+    return observations[0]
+
+
 def build_case_manifest(
     run_name: str,
     generated_at: str,
@@ -810,15 +820,21 @@ def _build_supplier_profiles_from_facts(
                 "phone": _primary_value(supplier, "phones"),
                 "contact_name": _clean_person_name(_primary_value(supplier, "contact_names")),
                 "contact_name_candidates": _candidate_values(_observation_values(supplier, "contact_names")),
+                "contact_name_source": _format_observation_source(_primary_observation(supplier, "contact_names")),
                 "email": _primary_value(supplier, "emails"),
                 "bank_account": _primary_value(supplier, "bank_accounts"),
                 "unified_social_credit_code": _primary_value(supplier, "unified_social_credit_codes"),
+                "unified_social_credit_code_source": _format_observation_source(_primary_observation(supplier, "unified_social_credit_codes")),
                 "legal_representative": _clean_person_name(_primary_value(supplier, "legal_representatives")),
                 "legal_representative_candidates": _candidate_values(_observation_values(supplier, "legal_representatives")),
+                "legal_representative_source": _format_observation_source(_primary_observation(supplier, "legal_representatives")),
                 "authorized_representative": _clean_person_name(_primary_value(supplier, "authorized_representatives")),
                 "authorized_representative_candidates": _candidate_values(_observation_values(supplier, "authorized_representatives")),
+                "authorized_representative_source": _format_observation_source(_primary_observation(supplier, "authorized_representatives")),
                 "address": _primary_value(supplier, "addresses"),
                 "address_candidates": _candidate_values(_observation_values(supplier, "addresses")),
+                "address_source": _format_observation_source(_primary_observation(supplier, "addresses")),
+                "phone_source": _format_observation_source(_primary_observation(supplier, "phones")),
                 "authorized_manufacturers": _observation_values(supplier, "authorized_manufacturers")[:3],
                 "authorization_issuers": _observation_values(supplier, "authorization_issuers")[:3],
                 "authorization_dates": _observation_values(supplier, "authorization_dates")[:3],
@@ -931,6 +947,12 @@ def _build_identity_points(profiles: list[dict]) -> list[str]:
             f"{profile['full_name']}法定代表人识别为 `{legal}`，授权代表识别为 `{authorized}`，联系人识别为 `{contact_name}`，"
             f"统一社会信用代码识别为 `{credit_code}`，联系电话识别为 `{phone}`，地址识别为 `{address}`。"
         )
+        source_note = _identity_source_note(profile)
+        if source_note:
+            points.append(source_note)
+        role_note = _identity_role_resolution_note(profile)
+        if role_note:
+            points.append(role_note)
         conflict_note = _identity_conflict_note(profile)
         if conflict_note:
             points.append(conflict_note)
@@ -1337,6 +1359,56 @@ def _candidate_values(values: list[str] | None) -> list[str]:
     return list(dict.fromkeys(cleaned))[:3]
 
 
+def _format_observation_source(observation) -> dict | None:
+    if observation is None:
+        return None
+    return {
+        "source_type": observation.source_type,
+        "confidence": observation.confidence,
+        "source_document": observation.source_document,
+        "source_page": observation.source_page,
+    }
+
+
+def _identity_source_note(profile: dict) -> str:
+    labels = {
+        "legal_representative_source": "法定代表人",
+        "authorized_representative_source": "授权代表",
+        "contact_name_source": "联系人",
+        "phone_source": "联系电话",
+        "address_source": "地址",
+        "unified_social_credit_code_source": "统一社会信用代码",
+    }
+    parts: list[str] = []
+    for key, label in labels.items():
+        source = profile.get(key)
+        if not source:
+            continue
+        source_label = _source_type_label(source.get("source_type"))
+        confidence_label = _confidence_label(source.get("confidence"), source.get("source_type"))
+        page_text = f"第{source['source_page']}页" if source.get("source_page") is not None else "页码未定位"
+        parts.append(f"{label}主采纳来源为{source_label}（{confidence_label}，{page_text}）")
+    if not parts:
+        return ""
+    return f"{profile['full_name']}主体字段主采纳依据：{'；'.join(parts)}。"
+
+
+def _identity_role_resolution_note(profile: dict) -> str:
+    legal = str(profile.get("legal_representative") or "").strip()
+    authorized = str(profile.get("authorized_representative") or "").strip()
+    contact = str(profile.get("contact_name") or "").strip()
+    values = [value for value in (legal, authorized, contact) if value and value != "未自动识别"]
+    if len(values) < 2:
+        return ""
+    if legal and authorized and legal == authorized:
+        return f"{profile['full_name']}法定代表人与授权代表识别为同一人，建议结合授权文件和签章页核验该角色重叠是否合理。"
+    if authorized and contact and authorized == contact and authorized != legal:
+        return f"{profile['full_name']}联系人与授权代表识别为同一人，当前按角色字段分别保留，但可在后续复核中重点关注。"
+    if legal and authorized and contact and len({legal, authorized, contact}) == 3:
+        return f"{profile['full_name']}法定代表人、授权代表、联系人识别为不同人员，当前按角色字段分别保留，不作互相替代。"
+    return ""
+
+
 def _identity_conflict_note(profile: dict) -> str:
     notes: list[str] = []
     legal_candidates = _remaining_candidates(
@@ -1366,6 +1438,34 @@ def _identity_conflict_note(profile: dict) -> str:
     if not notes:
         return ""
     return f"{profile['full_name']}主体字段存在多个候选值，当前优先采用上述主采纳值；另识别到：{'；'.join(notes)}，建议结合原始页和签章件进一步核验。"
+
+
+def _source_type_label(source_type: str | None) -> str:
+    labels = {
+        "section": "章节抽取",
+        "text": "文本抽取",
+        "table": "表格抽取",
+        "ocr": "OCR识别",
+    }
+    return labels.get(str(source_type or ""), "自动抽取")
+
+
+def _confidence_label(confidence: float | None, source_type: str | None) -> str:
+    if confidence is None:
+        if source_type == "section":
+            return "较高置信度"
+        if source_type == "table":
+            return "中高置信度"
+        if source_type == "ocr":
+            return "中等置信度"
+        return "常规置信度"
+    if confidence >= 0.9:
+        return "高置信度"
+    if confidence >= 0.75:
+        return "中高置信度"
+    if confidence >= 0.6:
+        return "中等置信度"
+    return "待复核置信度"
 
 
 def _remaining_candidates(values: list[str], primary: str | None) -> list[str]:
