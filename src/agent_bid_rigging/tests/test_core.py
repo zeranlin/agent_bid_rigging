@@ -503,6 +503,7 @@ def test_evidence_grading_and_formal_report() -> None:
     assert "围串标审查意见书" in markdown
     assert "审查目的" in markdown
     assert "初步审查结论" in markdown
+    assert "建议进一步核查事项" not in markdown
     assert report["preliminary_conclusion"]
     assert report["audit_opinion"]["main_statement"]
 
@@ -620,6 +621,7 @@ def test_formal_report_uses_full_names_and_keeps_timeline_and_clues_consistent()
     assert "**围串标判断维度摘要**" in markdown
     assert "文本与方案关联中" in markdown
     assert "主体关联未命中" in markdown
+    assert "建议进一步核查事项" not in markdown
 
 
 def test_authorization_section_treats_shared_manufacturer_as_normal_competition() -> None:

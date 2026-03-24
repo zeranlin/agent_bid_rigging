@@ -716,13 +716,8 @@ def build_formal_report_markdown(report: dict) -> str:
             "",
             "因此，本次审查意见为：  ",
             f"**{_wrap_conclusion_statement(report['preliminary_conclusion'])}**",
-            "",
-            "**六、建议进一步核查事项**",
-            "",
         ]
     )
-    for index, item in enumerate(report["further_checks"], start=1):
-        lines.append(f"{index}. {item}")
     if report.get("text_overlap_appendix"):
         lines.extend(["", "**附：文本重合证据附表**", ""])
         for index, item in enumerate(report["text_overlap_appendix"], start=1):
