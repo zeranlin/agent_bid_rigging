@@ -47,6 +47,7 @@ def _system_prompt(layer: str) -> str:
         "你必须严格依据输入材料写作，不得编造事实。"
         "结论必须克制，证据不足时只能写存在可疑线索、建议进一步核查。"
         "输出使用简体中文 Markdown。"
+        "风险等级、结论分层和证据强弱都必须使用中文，不要输出 low、medium、high、critical 等英文等级词。"
     )
     if layer == "evidence":
         return base + "你负责证据解释，重点区分强证据、弱证据、模板化因素和排除性因素。"
@@ -68,9 +69,9 @@ def _build_evidence_input(report: dict) -> str:
     ]
     for row in report["risk_score_table"]:
         lines.append(
-            f"- {row['supplier_a']} vs {row['supplier_b']}: total={row['total_score']}, "
-            f"level={row['risk_level']}, text={row['technical_text_score']}, entity={row['entity_link_score']}, "
-            f"pricing={row['pricing_score']}, file={row['file_homology_score']}"
+            f"- {row['supplier_a']} vs {row['supplier_b']}: 总分={row['total_score']}，"
+            f"风险等级={_risk_level_cn(row['risk_level'])}，文本与方案={row['technical_text_score']}，主体关联={row['entity_link_score']}，"
+            f"报价关联={row['pricing_score']}，结构同源={row['file_homology_score']}"
         )
     review_facts = report.get("review_facts") or {}
     supplier_facts = review_facts.get("suppliers") or []
@@ -97,6 +98,15 @@ def _build_evidence_input(report: dict) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _risk_level_cn(level: str) -> str:
+    return {
+        "low": "低风险",
+        "medium": "中风险",
+        "high": "高风险",
+        "critical": "极高风险",
+    }.get(level, "未知风险")
 
 
 def _format_supplier_fact_summary(supplier: dict) -> str:

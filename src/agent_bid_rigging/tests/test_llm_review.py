@@ -47,3 +47,5 @@ def test_build_evidence_input_mentions_review_facts_summary() -> None:
     assert "阿尔法公司" in prompt
     assert "1888800.00" in prompt
     assert "LIC-001" in prompt
+    assert "风险等级=中风险" in prompt
+    assert "level=medium" not in prompt
