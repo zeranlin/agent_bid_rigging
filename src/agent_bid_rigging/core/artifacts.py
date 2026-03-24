@@ -755,12 +755,38 @@ def build_formal_report_markdown(report: dict) -> str:
 
 def _extract_tender_metadata(text: str) -> dict:
     head = text[:6000]
+    project_name = _extract_first_match(head, ("项目名称", "采购项目名称", "招标项目名称"))
+    if not project_name:
+        project_name = _infer_project_name(head)
     return {
-        "project_name": _extract_first_match(head, ("项目名称", "采购项目名称", "招标项目名称")),
+        "project_name": project_name,
         "project_id": _extract_first_match(head, ("项目编号", "招标编号", "采购编号")),
         "purchaser": _extract_first_match(head, ("采购人", "采购单位")),
         "agency": _extract_first_match(head, ("采购代理机构", "代理机构")),
     }
+
+
+def _infer_project_name(text: str) -> str | None:
+    patterns = (
+        re.compile(r"(?:此次|本次|本项目|该项目)\s*([\u4e00-\u9fffA-Za-z0-9_-]{2,40}?项目[A-Za-z0-9一二三四五六七八九十]*)"),
+        re.compile(r"([\u4e00-\u9fffA-Za-z0-9_-]{2,40}?项目[A-Za-z0-9一二三四五六七八九十]*)\s*(?:进行|开展|公开|采购|招标|比选)"),
+    )
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            candidate = match.group(1).strip("：:，,。；;（）()[]【】")
+            if _looks_valid_project_name(candidate):
+                return candidate
+    return None
+
+
+def _looks_valid_project_name(value: str) -> bool:
+    if not value or len(value) < 4 or len(value) > 40:
+        return False
+    if "项目编号" in value or "招标编号" in value or "采购编号" in value:
+        return False
+    if value.endswith(("进行", "开展", "公开", "采购", "招标", "比选")):
+        return False
+    return "项目" in value
 
 
 def _build_supplier_profiles(

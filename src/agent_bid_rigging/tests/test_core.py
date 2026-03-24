@@ -10,6 +10,7 @@ from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.core.artifacts import (
+    _extract_tender_metadata,
     _build_supplier_profiles_from_facts,
     build_authorization_chain_table,
     build_duplicate_detection_table,
@@ -399,6 +400,17 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     assert "## 五、排除性因素" in opinion["document"]
     assert "alpha 与 beta" in opinion["document"]
     assert "维度判断：主体关联强" in opinion["document"]
+
+
+def test_extract_tender_metadata_can_fallback_to_body_project_name() -> None:
+    text = (
+        "项目编号：招标编号_TEST_001\n"
+        "此次电子商城项目A以XX旅游股份有限公司为主体进行公开比选。\n"
+        "其余内容略。"
+    )
+    metadata = _extract_tender_metadata(text)
+    assert metadata["project_name"] == "电子商城项目A"
+    assert metadata["project_id"] == "招标编号_TEST_001"
 
 
 def test_normative_response_sections_do_not_trigger_text_overlap_finding() -> None:
