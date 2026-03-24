@@ -57,7 +57,8 @@ TEXT_SUPPORTING_TITLES = {
     "仅两家共享的一般文本相似",
     "仅两家共享的非模板文本重合",
 }
-TEXT_ALL_TITLES = TEXT_PRIORITY_TITLES | TEXT_SUPPORTING_TITLES | {"仅两家共享的共同错误表述"}
+TEXT_LEGACY_TITLES = {"仅两家共享的共同错误表述"}
+TEXT_ALL_TITLES = TEXT_PRIORITY_TITLES | TEXT_SUPPORTING_TITLES | TEXT_LEGACY_TITLES
 
 
 def _coerce_suppliers(payload: ReviewFacts | list[ExtractedSignals]) -> list[SupplierFacts] | None:
@@ -949,10 +950,10 @@ def _build_structure_summary(
             points.append(f"{pair_label}出现相同编号或页码错误，具有一定异常性，建议继续核对原始编制底稿。")
         elif "仅两家共享的排版错误" in text_titles:
             points.append(f"{pair_label}出现相同排版或格式错误，建议结合原始底稿复核是否存在共用编辑模板。")
-        elif "仅两家共享的共同错误表述" in text_titles:
-            points.append(f"{pair_label}出现共同错误或异常表述，需结合主体、报价和原始底稿进一步复核。")
         elif "仅两家共享的罕见表达重合" in text_titles:
             points.append(f"{pair_label}存在罕见表达重合，具有一定异常性，建议继续核对原始方案来源。")
+        elif "仅两家共享的共同错误表述" in text_titles:
+            points.append(f"{pair_label}出现共同错误或异常表述，建议结合主体、报价和原始底稿进一步复核。")
         elif "仅两家共享的一般文本相似" in text_titles:
             points.append(f"{pair_label}存在一般相似文本片段，目前更倾向于辅助性线索。")
     for row in sorted(section_similarity_table, key=lambda item: item["similarity"], reverse=True)[:4]:
@@ -1118,7 +1119,7 @@ def _assessment_has_actionable_clues(assessment: PairwiseAssessment) -> bool:
         return False
     text_titles = TEXT_ALL_TITLES
     if titles <= text_titles:
-        return bool(titles & (TEXT_PRIORITY_TITLES | {"仅两家共享的共同错误表述"}))
+        return bool(titles & (TEXT_PRIORITY_TITLES | TEXT_LEGACY_TITLES))
     return True
 
 

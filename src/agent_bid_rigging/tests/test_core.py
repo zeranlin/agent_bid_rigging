@@ -1256,6 +1256,44 @@ def test_text_error_titles_are_rendered_consistently_in_report_and_appendix() ->
     assert "出现相同逻辑矛盾或前后不符表述" in markdown
 
 
+def test_text_error_titles_render_four_categories_in_appendix() -> None:
+    mapping = {
+        "仅两家共享的排版错误": "两家投标文件存在排版错误",
+        "仅两家共享的编号错误": "两家投标文件存在编号错误",
+        "仅两家共享的字段错填": "两家投标文件存在字段错填",
+        "仅两家共享的逻辑矛盾表述": "两家投标文件存在逻辑矛盾表述",
+    }
+    for finding_title, appendix_title in mapping.items():
+        report = build_formal_report(
+            case_manifest={
+                "case_id": "case-text-appendix",
+                "generated_at": "2026-03-24T10:00:00",
+                "input_summary": {"supplier_names": ["alpha", "beta"], "tender_count": 1, "bid_count": 2},
+                "source_paths": {},
+            },
+            document_catalog=[],
+            review_conclusion_table={
+                "verified_facts": [],
+                "suspicious_clues": [],
+                "exclusionary_factors": [],
+                "recommendations": [],
+            },
+            evidence_grade_table=[
+                {
+                    "pair": "alpha 与 beta",
+                    "finding_title": finding_title,
+                    "evidence_grade": "B",
+                    "reason": "较强异常线索，需要结合其他证据判断。",
+                    "evidence": ["重合行: 示例片段"],
+                    "evidence_details": [],
+                }
+            ],
+            risk_score_table=[],
+        )
+        appendix_titles = [item["finding_title"] for item in report["text_overlap_appendix"]]
+        assert appendix_title in appendix_titles
+
+
 def test_general_text_similarity_does_not_form_actionable_clue_by_itself() -> None:
     line = "该模块支持多角色协同处理并保留完整业务流转记录。"
     left = extract_signals(load_document_from_text("alpha", "bid", f"说明\n背景描述A。\n{line}\n其余内容略。"))
