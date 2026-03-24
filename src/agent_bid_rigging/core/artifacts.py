@@ -758,10 +758,13 @@ def _extract_tender_metadata(text: str) -> dict:
     project_name = _extract_first_match(head, ("项目名称", "采购项目名称", "招标项目名称"))
     if not project_name:
         project_name = _infer_project_name(head)
+    purchaser = _extract_first_match(head, ("采购人", "采购单位名称"))
+    if not purchaser:
+        purchaser = _infer_purchaser(head)
     return {
         "project_name": project_name,
         "project_id": _extract_first_match(head, ("项目编号", "招标编号", "采购编号")),
-        "purchaser": _extract_first_match(head, ("采购人", "采购单位")),
+        "purchaser": purchaser,
         "agency": _extract_first_match(head, ("采购代理机构", "代理机构")),
     }
 
@@ -787,6 +790,30 @@ def _looks_valid_project_name(value: str) -> bool:
     if value.endswith(("进行", "开展", "公开", "采购", "招标", "比选")):
         return False
     return "项目" in value
+
+
+def _infer_purchaser(text: str) -> str | None:
+    patterns = (
+        re.compile(r"(?:采购人|采购单位名称)\s*[:：]?\s*([^\n（(，,。；;]{2,40})"),
+        re.compile(r"联系人\s*[:：]?\s*(采购人[^\s（(，,。；;]{0,20})"),
+        re.compile(r"前往\s*(采购人[^\s（(，,。；;]{0,20})[（(]"),
+    )
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            candidate = match.group(1).strip("：:，,。；;（）()[]【】")
+            if _looks_valid_purchaser(candidate):
+                return candidate
+    return None
+
+
+def _looks_valid_purchaser(value: str) -> bool:
+    if not value or len(value) < 2 or len(value) > 40:
+        return False
+    if any(token in value for token in ("邮箱", "电话", "地址", "流程", "资料", "文件", "比选")):
+        return False
+    if "采购人" in value:
+        return True
+    return any(token in value for token in ("公司", "中心", "医院", "学院", "学校", "集团", "单位"))
 
 
 def _build_supplier_profiles(

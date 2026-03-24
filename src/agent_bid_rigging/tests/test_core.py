@@ -413,6 +413,16 @@ def test_extract_tender_metadata_can_fallback_to_body_project_name() -> None:
     assert metadata["project_id"] == "招标编号_TEST_001"
 
 
+def test_extract_tender_metadata_can_fallback_to_body_purchaser() -> None:
+    text = (
+        "项目编号：招标编号_TEST_001\n"
+        "2、由其法定代表人或其授权代表携带以下资料文件，前往采购人A（某地某街道 109 号）进行现场资格审查。\n"
+        "其余内容略。"
+    )
+    metadata = _extract_tender_metadata(text)
+    assert metadata["purchaser"] == "采购人A"
+
+
 def test_normative_response_sections_do_not_trigger_text_overlap_finding() -> None:
     tender = load_document_from_text("tender", "tender", "项目名称：电子胃肠镜等设备采购项目")
     baseline = build_tender_baseline(tender)
