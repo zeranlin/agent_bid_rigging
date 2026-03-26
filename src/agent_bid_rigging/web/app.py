@@ -186,34 +186,16 @@ INDEX_TEMPLATE = """<!doctype html>
     <section class="hero">
       <span class="badge">最小演示版</span>
       <h1>agent_bid_rigging 围串标审查演示台</h1>
-      <p class="muted">上传 1 份招标文件和多家投标文件，系统会调用现有审查链路完成抽取、比对、打分，并生成规则版与 LLM 版报告。</p>
+      <p class="muted">上传 1 份招标文件和多家投标文件，系统会调用现有审查链路完成抽取、比对、打分，并生成正式报告。</p>
     </section>
     <section class="grid">
       <section class="panel">
         <h2>新建案件</h2>
         <form action="{{ url_for('create_run') }}" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="review_mode" value="llm_ocr">
           <div class="field">
             <label for="label">案件标识</label>
             <input id="label" type="text" name="label" placeholder="例如：wcb_demo_release">
-          </div>
-          <div class="field">
-            <label>审查模式</label>
-            <div class="mode-grid">
-              <label class="mode-card selected" id="mode-rule-card">
-                <input type="radio" name="review_mode" value="rule" checked>
-                <strong>规则审查</strong>
-                <span>不调用大模型，快速返回规则版正式报告。</span>
-              </label>
-              <label class="mode-card" id="mode-llm-card">
-                <input type="radio" name="review_mode" value="llm_ocr">
-                <strong>大模型审查</strong>
-                <span>调用 LLM + OCR，时间较长，返回增强版正式报告。</span>
-              </label>
-            </div>
-          </div>
-          <div class="field">
-            <label for="bid_names">供应商名称（可选）</label>
-            <textarea id="bid_names" name="bid_names" placeholder="每行 1 个名称，顺序与投标文件一致"></textarea>
           </div>
           <div class="field">
             <label for="tender_file">招标文件</label>
@@ -226,7 +208,7 @@ INDEX_TEMPLATE = """<!doctype html>
           <button type="submit">开始审查</button>
         </form>
         <div class="hint">
-          <strong>演示建议：</strong>规则审查适合快速演示；大模型审查会进入等待状态，系统会一直处理直到 LLM + OCR 完成后再展示结果。
+          <strong>演示建议：</strong>当前页面仅保留大模型审查入口；任务提交后会持续处理，直到 LLM + OCR 完成后再展示结果。
         </div>
       </section>
       <section class="panel">
@@ -258,19 +240,6 @@ INDEX_TEMPLATE = """<!doctype html>
       </section>
     </section>
   </main>
-  <script>
-    const ruleCard = document.getElementById("mode-rule-card");
-    const llmCard = document.getElementById("mode-llm-card");
-    const syncModeCards = () => {
-      const selected = document.querySelector("input[name='review_mode']:checked")?.value;
-      ruleCard.classList.toggle("selected", selected === "rule");
-      llmCard.classList.toggle("selected", selected === "llm_ocr");
-    };
-    document.querySelectorAll("input[name='review_mode']").forEach((radio) => {
-      radio.addEventListener("change", syncModeCards);
-    });
-    syncModeCards();
-  </script>
 </body>
 </html>
 """
@@ -568,25 +537,17 @@ RUN_TEMPLATE = """<!doctype html>
     <section class="panel">
       <a class="secondary" href="{{ url_for('index') }}">返回首页</a>
       <h1>{{ run_id }}</h1>
-      <p class="muted">状态会自动刷新。规则审查会较快完成；大模型审查会持续等待，直到 LLM + OCR 报告处理完成。</p>
+      <p class="muted">状态会自动刷新。当前页面默认展示大模型审查任务，并持续等待直到 LLM + OCR 报告处理完成。</p>
       <div class="meta">
         <div><strong>当前状态</strong><br><span class="state-{{ status.state }}">{{ status.state }}</span></div>
         <div><strong>审查模式</strong><br>{{ mode_label }}</div>
         <div><strong>生成时间</strong><br>{{ status.generated_at or job.generated_at or '-' }}</div>
       </div>
     </section>
+    {% if dimension_overview %}
     <section class="panel">
-      <h2>结果报告</h2>
-      <p class="section-note">演示页默认只突出正式报告入口；规则审查展示 `formal_report.md`，大模型审查优先展示 `formal_report.llm.md`。</p>
-      <div class="links">
-        {% for item in report_links %}
-        <a class="button {% if item.secondary %}secondary{% endif %} {% if item.active %}active{% endif %}" href="{{ item.href }}">
-          <strong>{{ item.label }}</strong>
-          <span>{{ item.caption }}</span>
-        </a>
-        {% endfor %}
-      </div>
-      {% if dimension_overview %}
+      <h2>结果概览</h2>
+      {% if not waiting_for_llm_result %}
       <div class="dimension-summary">
         <strong>维度摘要概览</strong>
         <ul>
@@ -602,29 +563,23 @@ RUN_TEMPLATE = """<!doctype html>
       </div>
       {% endif %}
     </section>
-    {% if auto_refresh %}
+    {% endif %}
+    {% if waiting_for_llm_result %}
     <section class="panel">
       <h2>等待审查完成</h2>
       <div class="waiting">
         <div class="spinner"></div>
         <div>
           <strong>系统正在处理案件材料。</strong><br>
-          {% if mode_label == '大模型审查（LLM + OCR）' %}
-          当前正在执行 OCR、事实融合与 LLM 报告生成，请耐心等待页面自动刷新。
-          {% else %}
-          当前正在执行规则抽取、比对与正式报告生成，请稍候。
-          {% endif %}
+          当前正在执行 OCR、事实融合与 LLM 报告生成，请耐心等待页面自动刷新；增强报告完成前不会展示任何报告正文。
         </div>
       </div>
     </section>
     {% endif %}
-    {% if report_content %}
+    {% if report_content and not waiting_for_llm_result %}
     <section class="panel">
       <h2>报告查看</h2>
-      <p class="section-note">这里直接展示当前案件的正式报告正文。</p>
-      <div class="report-actions">
-        <a class="button secondary" href="{{ export_href }}">导出当前报告</a>
-      </div>
+      <p class="section-note">这里直接展示当前案件的大模型增强报告正文。</p>
       <div class="report-viewer">{{ report_content|safe }}</div>
     </section>
     {% endif %}
@@ -676,7 +631,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             )
             bids[supplier_name] = str(bid_path)
 
-        review_mode = (request.form.get("review_mode") or "rule").lower()
+        review_mode = (request.form.get("review_mode") or "llm_ocr").lower()
         opinion_mode, enable_ocr = _resolve_review_mode(review_mode)
         _write_json(
             run_dir / "web_job.json",
@@ -723,10 +678,16 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         )
         if job.get("state") in {"queued", "running", "failed"} and status.get("state") == "not-requested":
             status["state"] = job.get("state")
+        waiting_for_llm_result = _should_wait_for_llm_result(job, status, run_dir)
         selected_report = request.args.get("report", "main")
-        report_path, report_label = _resolve_report_variant(run_dir, selected_report)
+        if job.get("review_mode") == "llm_ocr":
+            if waiting_for_llm_result:
+                selected_report = "llm"
+            report_path, report_label = _resolve_llm_report_variant(run_dir)
+        else:
+            report_path, report_label = _resolve_default_report_variant(run_dir)
         report_content = None
-        if report_path.exists():
+        if report_path.exists() and not waiting_for_llm_result:
             report_content = _render_markdown(_normalize_report_markdown(report_path.read_text(encoding="utf-8")))
         return render_template_string(
             RUN_TEMPLATE,
@@ -735,11 +696,13 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             status=status,
             mode_label=_review_mode_label(job.get("review_mode")),
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
-            report_links=_report_links(run_id, run_dir, selected_report),
+            report_links=_report_links(run_id, run_dir, selected_report) if not waiting_for_llm_result else [],
             dimension_overview=_build_dimension_overview(run_dir),
             export_href=url_for("artifact", run_id=run_id, name=report_path.name, download=1),
             report_content=report_content,
             auto_refresh=status.get("state") in {"queued", "running"},
+            waiting_for_llm_result=waiting_for_llm_result,
+            llm_result_only=(job.get("review_mode") == "llm_ocr"),
         )
 
     @app.get("/api/runs/<run_id>")
@@ -754,8 +717,10 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
                 "run_id": run_id,
                 "job": job,
                 "llm_status": status,
-                "review_mode": job.get("review_mode", "rule"),
-                "available_reports": [item["label"] for item in _report_links(run_id, run_dir, "main")],
+                "review_mode": job.get("review_mode", "llm_ocr"),
+                "available_reports": []
+                if _should_wait_for_llm_result(job, status, run_dir)
+                else [item["label"] for item in _report_links(run_id, run_dir, "main")],
             }
         )
 
@@ -914,8 +879,6 @@ def _unique_upload_path(target_dir: Path, filename: str) -> Path:
 
 def _report_links(run_id: str, run_dir: Path, selected: str) -> list[dict[str, Any]]:
     mapping = [
-        ("formal_report.md", "主报告", "当前正式报告主入口", "main"),
-        ("formal_report.rule.md", "规则版报告", "规则链路生成的正式报告", "rule"),
         ("formal_report.llm.md", "大模型版报告", "LLM + OCR 增强版正式报告", "llm"),
     ]
     links = []
@@ -985,37 +948,20 @@ def _build_dimension_chips(summary: dict[str, dict]) -> list[dict[str, str]]:
     return chips
 
 
-def _resolve_report_variant(run_dir: Path, selected: str) -> tuple[Path, str]:
-    variant_map = {
-        "main": ("formal_report.md", "主报告"),
-        "rule": ("formal_report.rule.md", "规则版"),
-        "llm": ("formal_report.llm.md", "LLM版"),
-    }
-    filename, label = variant_map.get(selected, variant_map["main"])
-    path = run_dir / filename
-    if path.exists():
-        return path, label
-    return run_dir / "formal_report.md", "主报告"
+def _resolve_llm_report_variant(run_dir: Path) -> tuple[Path, str]:
+    return run_dir / "formal_report.llm.md", "LLM版"
 
 
-def _report_variants(run_id: str, run_dir: Path, active_label: str) -> list[dict[str, Any]]:
-    variants = [
-        ("主报告", "main", run_dir / "formal_report.md"),
-        ("规则版", "rule", run_dir / "formal_report.rule.md"),
-        ("LLM版", "llm", run_dir / "formal_report.llm.md"),
-    ]
-    rows = []
-    for label, key, path in variants:
-        if not path.exists():
-            continue
-        rows.append(
-            {
-                "label": label,
-                "href": url_for("run_detail", run_id=run_id, report=key),
-                "active": label == active_label,
-            }
-        )
-    return rows
+def _resolve_default_report_variant(run_dir: Path) -> tuple[Path, str]:
+    return run_dir / "formal_report.md", "正式报告"
+
+
+def _should_wait_for_llm_result(job: dict[str, Any], status: dict[str, Any], run_dir: Path) -> bool:
+    if job.get("review_mode") != "llm_ocr":
+        return False
+    if status.get("state") != "completed":
+        return True
+    return not (run_dir / "formal_report.llm.md").exists()
 
 
 def _resolve_review_mode(review_mode: str) -> tuple[str, bool]:
@@ -1027,7 +973,7 @@ def _resolve_review_mode(review_mode: str) -> tuple[str, bool]:
 def _review_mode_label(review_mode: str | None) -> str:
     if review_mode == "llm_ocr":
         return "大模型审查（LLM + OCR）"
-    return "规则审查"
+    return "正式审查"
 
 
 def _read_json(path: Path, default: Any) -> Any:

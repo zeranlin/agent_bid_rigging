@@ -8,6 +8,7 @@ from agent_bid_rigging.models import FactObservation
 from agent_bid_rigging.core.extractor import build_tender_baseline, extract_signals
 from agent_bid_rigging.core.fusion import build_review_facts
 from agent_bid_rigging.core.opinion import generate_review_opinion
+from agent_bid_rigging.core.runner import _strip_follow_up_section
 from agent_bid_rigging.core.scoring import assess_pairs
 from agent_bid_rigging.core.artifacts import (
     _extract_tender_metadata,
@@ -398,8 +399,28 @@ def test_template_opinion_mentions_high_risk_pair() -> None:
     assert "## 一、项目概况" in opinion["document"]
     assert "## 三、事实摘要" in opinion["document"]
     assert "## 五、排除性因素" in opinion["document"]
+    assert "建议进一步核查事项" not in opinion["document"]
     assert "alpha 与 beta" in opinion["document"]
     assert "维度判断：主体关联强" in opinion["document"]
+
+
+def test_strip_follow_up_section_removes_section_from_llm_report() -> None:
+    markdown = (
+        "# 围串标审查意见书\n\n"
+        "## 五、初步审查结论\n\n"
+        "这里是结论。\n\n"
+        "## 六、建议进一步核查事项\n\n"
+        "- 核查事项 A\n"
+        "- 核查事项 B\n\n"
+        "## 七、说明\n\n"
+        "这里是说明。\n"
+    )
+
+    cleaned = _strip_follow_up_section(markdown)
+
+    assert "建议进一步核查事项" not in cleaned
+    assert "核查事项 A" not in cleaned
+    assert "## 七、说明" in cleaned
 
 
 def test_extract_tender_metadata_can_fallback_to_body_project_name() -> None:

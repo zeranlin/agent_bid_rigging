@@ -124,11 +124,7 @@ def _generate_template_opinion(report: dict) -> str:
         "",
         _conclusion_text(top_risk),
         "",
-        "## 八、建议进一步核查事项",
-        "",
-        _recommendations(top_risk),
-        "",
-        "## 九、说明",
+        "## 八、说明",
         "",
         "本意见书为自动生成的审查底稿，旨在为政府采购审查人员提供复核起点，不能替代最终行政认定或法律结论。",
     ]
@@ -173,7 +169,7 @@ def _build_llm_input(report: dict) -> str:
         [
             "",
             "写作要求:",
-            "1. 结构包括：项目概况、审查依据与方法、事实摘要、主要可疑线索、排除性因素、风险评分与主要证据摘要、初步审查意见、建议进一步核查事项、说明。",
+            "1. 结构包括：项目概况、审查依据与方法、事实摘要、主要可疑线索、排除性因素、风险评分与主要证据摘要、初步审查意见、说明。",
             "2. 结论要与证据强度匹配。",
             "3. 明确指出高风险供应商对及其证据。",
             "4. 若风险较低，应说明暂未发现明显异常。",
@@ -261,17 +257,6 @@ def _conclusion_text(top_risk: dict | None) -> str:
     if top_risk["risk_level"] == "medium":
         return "系统发现部分可疑重合线索，建议结合现场核验、原始材料和外部工商信息进一步判断。"
     return "本次自动审查暂未发现足以支撑明显围串标怀疑的强异常信号。"
-
-
-def _recommendations(top_risk: dict | None) -> str:
-    if not top_risk or top_risk["risk_level"] == "low":
-        return (
-            "建议保留本次自动审查工件，作为后续抽检和复核底稿；如后续出现投诉举报或外部线索，再结合原始电子文件元数据开展复审。"
-        )
-    return (
-        "建议调取原始电子投标文件及形成过程材料，核查联系人、设备、网络、账号、排版痕迹等关联信息；"
-        "必要时结合工商、社保、纳税、银行流水等外围证据开展联合核查。"
-    )
 
 
 def _format_risk_summary(risk_summary: list[dict]) -> str:

@@ -19,8 +19,12 @@ def test_web_index_loads(tmp_path: Path) -> None:
 
     response = client.get("/")
 
+    body = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert "围串标审查演示台" in response.get_data(as_text=True)
+    assert "围串标审查演示台" in body
+    assert "规则审查" not in body
+    assert "审查模式" not in body
+    assert "供应商名称（可选）" not in body
 
 
 def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
@@ -71,7 +75,7 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
         "/runs",
         data={
             "label": "demo_case",
-            "review_mode": "rule",
+            "review_mode": "llm_ocr",
             "bid_names": "恒禾\n华康",
             "tender_file": (io.BytesIO(b"tender body"), "招标文件.zip"),
             "bid_files": [
@@ -90,11 +94,46 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
     status_response = client.get("/api/runs/demo_case")
     payload = status_response.get_json()
     assert payload["llm_status"]["state"] == "completed"
-    assert "主报告" in payload["available_reports"]
-    assert payload["review_mode"] == "rule"
+    assert payload["available_reports"] == []
+    assert payload["review_mode"] == "llm_ocr"
 
 
-def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
+def test_run_detail_waits_for_llm_result_before_showing_report(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "demo_case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "web_job.json").write_text(
+        json.dumps(
+            {
+                "run_id": "demo_case",
+                "state": "running",
+                "review_mode": "llm_ocr",
+                "opinion_mode": "llm",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "llm_status.json").write_text(
+        json.dumps({"requested_mode": "llm", "state": "running"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (run_dir / "formal_report.md").write_text("main report", encoding="utf-8")
+    (run_dir / "formal_report.rule.md").write_text("rule report", encoding="utf-8")
+
+    response = client.get("/runs/demo_case")
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "增强报告完成前不会展示任何报告正文" in body
+    assert "规则版报告" not in body
+    assert "主报告" not in body
+    assert "main report" not in body
+    assert "rule report" not in body
+
+
+def test_run_detail_only_shows_llm_report_when_completed(tmp_path: Path) -> None:
     app = create_app(tmp_path)
     client = app.test_client()
     run_dir = tmp_path / "runs" / "demo_case"
@@ -115,8 +154,6 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
         json.dumps({"requested_mode": "llm", "state": "completed"}, ensure_ascii=False),
         encoding="utf-8",
     )
-    (run_dir / "formal_report.md").write_text("main report", encoding="utf-8")
-    (run_dir / "formal_report.rule.md").write_text("rule report", encoding="utf-8")
     (run_dir / "formal_report.llm.md").write_text("llm report", encoding="utf-8")
     (run_dir / "risk_score_table.json").write_text(
         json.dumps(
@@ -139,19 +176,20 @@ def test_run_detail_can_switch_report_variants(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    response = client.get("/runs/demo_case?report=rule")
+    response = client.get("/runs/demo_case")
 
     body = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert ">rule report</p>" in body or "<p>rule report</p>" in body
-    assert "大模型版报告" in body
+    assert ">llm report</p>" in body or "<p>llm report</p>" in body
+    assert "主报告" not in body
+    assert "规则版报告" not in body
     assert "维度摘要概览" in body
     assert "dimension-chip strong" in body
     assert "dimension-chip medium" in body
     assert "主体关联强" in body
     assert "报价关联中" in body
     assert "文本与方案关联未命中" not in body
-    assert "导出当前报告" in body
+    assert "导出当前报告" not in body
 
 
 def test_artifact_download_supports_export(tmp_path: Path) -> None:

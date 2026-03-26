@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -330,7 +331,8 @@ def run_review(
 
     llm_formal_report_markdown = None
     if llm_review_layers and llm_review_layers.get("section_report"):
-        llm_formal_report_markdown = llm_review_layers["section_report"]
+        llm_formal_report_markdown = _strip_follow_up_section(llm_review_layers["section_report"])
+        llm_review_layers["section_report"] = llm_formal_report_markdown
     if llm_review_layers:
         report["llm_review_layers"] = llm_review_layers
         llm_status = {
@@ -402,7 +404,10 @@ def finish_llm_review(run_dir: str) -> dict:
             raise RuntimeError("LLM layers were not generated.")
 
         report["llm_review_layers"] = llm_review_layers
-        llm_formal_report_markdown = llm_review_layers.get("section_report", formal_report_markdown)
+        llm_formal_report_markdown = _strip_follow_up_section(
+            llm_review_layers.get("section_report", formal_report_markdown)
+        )
+        llm_review_layers["section_report"] = llm_formal_report_markdown
         opinion = generate_review_opinion(report, opinion_mode="llm", llm_review_layers=llm_review_layers)
         rule_opinion = generate_review_opinion(report, opinion_mode="template")
 
@@ -454,6 +459,15 @@ def finish_llm_review(run_dir: str) -> dict:
 
 def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _strip_follow_up_section(markdown: str) -> str:
+    pattern = re.compile(
+        r"\n##\s*[一二三四五六七八九十0-9]+[、.．]?\s*建议进一步核查事项\s*\n.*?(?=\n##\s*[一二三四五六七八九十0-9]+[、.．]?\s*\S|\Z)",
+        re.S,
+    )
+    cleaned = re.sub(pattern, "\n", markdown)
+    return cleaned.rstrip() + "\n"
 
 
 def _build_summary(report: dict) -> str:
