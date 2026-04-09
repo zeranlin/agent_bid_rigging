@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import unicodedata
@@ -47,95 +48,126 @@ INDEX_TEMPLATE = """<!doctype html>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4efe6;
-      --panel: #fffdfa;
-      --ink: #1f2a33;
-      --muted: #68727d;
-      --line: #d9cdbd;
-      --accent: #7c3f00;
-      --accent-soft: #f0dcc8;
-      --ok: #256d1b;
-      --warn: #8f5d00;
-      --bad: #9a1f1f;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #f8f9fb;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #d9dee5;
+      --accent: #2563eb;
+      --accent-soft: #eaf2ff;
+      --ok: #1f7a36;
+      --warn: #9a6700;
+      --bad: #b42318;
+      --shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
-      background:
-        radial-gradient(circle at top left, #fff7ef 0, #f4efe6 45%, #efe5d8 100%);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
       color: var(--ink);
+      min-height: 100vh;
     }
     main {
-      width: min(1120px, calc(100vw - 48px));
-      margin: 28px auto 40px;
+      width: min(1040px, calc(100vw - 32px));
+      margin: 24px auto 40px;
     }
     .hero, .panel {
-      background: color-mix(in srgb, var(--panel) 92%, white);
+      background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 24px;
-      box-shadow: 0 18px 40px rgba(72, 47, 22, 0.08);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
     }
     .hero {
       display: grid;
       gap: 12px;
-      margin-bottom: 20px;
+      padding: 28px;
+      margin-bottom: 18px;
     }
     h1, h2, h3 { margin: 0; font-weight: 700; }
-    h1 { font-size: 30px; }
-    h2 { font-size: 20px; margin-bottom: 16px; }
-    p, li, label, input, select, button, textarea { font-size: 15px; line-height: 1.6; }
+    h1 {
+      font-size: 30px;
+      line-height: 1.25;
+    }
+    h2 {
+      font-size: 20px;
+      margin-bottom: 14px;
+    }
+    p, li, label, input, select, button, textarea, th, td { font-size: 15px; line-height: 1.6; }
     .muted { color: var(--muted); }
     .grid {
       display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 20px;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.9fr);
+      gap: 18px;
       align-items: start;
+    }
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: fit-content;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .hero-kicker::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+    .panel {
+      padding: 22px;
+      background: var(--panel);
+    }
+    .hero-lead {
+      max-width: 52em;
+      margin: 0;
+      font-size: 15px;
     }
     form { display: grid; gap: 14px; }
     .field { display: grid; gap: 8px; }
+    label {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink);
+    }
     input[type="text"], select, textarea, input[type="file"] {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 10px;
       padding: 10px 12px;
-      background: white;
+      background: var(--panel-soft);
       color: var(--ink);
+      transition: border-color 180ms ease, box-shadow 180ms ease;
     }
-    textarea { min-height: 88px; resize: vertical; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .mode-grid {
+    input[type="text"]::placeholder {
+      color: #98a2b3;
+    }
+    input[type="text"]:focus,
+    textarea:focus,
+    input[type="file"]:focus {
+      outline: none;
+      border-color: rgba(37, 99, 235, 0.45);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    input[type="file"] {
+      min-height: 46px;
+    }
+    .upload-pair {
       display: grid;
-      grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
-    .mode-card {
-      position: relative;
-      display: grid;
-      gap: 8px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: #fffaf4;
-    }
-    .mode-card input {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-    .mode-card.selected {
-      border-color: var(--accent);
-      box-shadow: 0 10px 24px rgba(124, 63, 0, 0.12);
-      background: linear-gradient(180deg, #fff7ee 0%, #f7ebdb 100%);
-    }
-    .mode-card strong { font-size: 18px; }
-    .mode-card span { color: var(--muted); font-size: 14px; }
     button, .button {
       appearance: none;
       border: 0;
-      border-radius: 999px;
+      border-radius: 10px;
       padding: 11px 16px;
       background: var(--accent);
       color: white;
@@ -145,22 +177,34 @@ INDEX_TEMPLATE = """<!doctype html>
       align-items: center;
       justify-content: center;
       font-weight: 600;
+      box-shadow: none;
+      transition: background 180ms ease;
+    }
+    button:hover, .button:hover {
+      background: #1d4ed8;
     }
     .button.secondary {
       background: transparent;
-      color: var(--accent);
+      color: var(--ink);
       border: 1px solid var(--line);
+      box-shadow: none;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 14px;
+      font-size: 15px;
     }
     th, td {
       text-align: left;
       border-bottom: 1px solid var(--line);
       padding: 10px 8px;
       vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      font-weight: 700;
     }
     .badge {
       display: inline-flex;
@@ -174,19 +218,48 @@ INDEX_TEMPLATE = """<!doctype html>
     .state-completed { color: var(--ok); }
     .state-running, .state-queued { color: var(--warn); }
     .state-failed { color: var(--bad); }
-    .hint { padding: 12px 14px; border-radius: 12px; background: #f8f2ea; border: 1px dashed var(--line); }
+    .hint {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px dashed var(--line);
+      color: var(--muted);
+    }
+    .hint strong { color: var(--ink); }
+    .runs-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .runs-note {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 14px;
+      max-width: 28em;
+    }
     @media (max-width: 900px) {
-      main { width: min(100vw - 24px, 1120px); }
-      .grid, .row, .mode-grid { grid-template-columns: 1fr; }
+      main { width: min(100vw - 20px, 1040px); }
+      .grid { grid-template-columns: 1fr; }
+      .hero {
+        padding: 22px;
+      }
+      h1 {
+        font-size: 26px;
+      }
+      .panel {
+        padding: 18px;
+      }
     }
   </style>
 </head>
 <body>
   <main>
     <section class="hero">
-      <span class="badge">最小演示版</span>
-      <h1>agent_bid_rigging 围串标审查演示台</h1>
-      <p class="muted">上传 1 份招标文件和多家投标文件，系统会调用现有审查链路完成抽取、比对、打分，并生成正式报告。</p>
+      <span class="hero-kicker">最小演示版</span>
+      <h1>围串标审查工作台</h1>
+      <p class="hero-lead muted">上传 1 份招标文件和多家投标文件，系统会沿着现有审查链路完成抽取、比对、打分，并在处理完成后展示正式报告。</p>
     </section>
     <section class="grid">
       <section class="panel">
@@ -197,29 +270,34 @@ INDEX_TEMPLATE = """<!doctype html>
             <label for="label">案件标识</label>
             <input id="label" type="text" name="label" placeholder="例如：wcb_demo_release">
           </div>
-          <div class="field">
-            <label for="tender_file">招标文件</label>
-            <input id="tender_file" type="file" name="tender_file" required>
-          </div>
-          <div class="field">
-            <label for="bid_files">投标文件（至少 2 份）</label>
-            <input id="bid_files" type="file" name="bid_files" multiple required>
+          <div class="upload-pair">
+            <div class="field">
+              <label for="tender_file">招标文件</label>
+              <input id="tender_file" type="file" name="tender_file" required>
+            </div>
+            <div class="field">
+              <label for="bid_files">投标文件（至少 2 份）</label>
+              <input id="bid_files" type="file" name="bid_files" multiple required>
+            </div>
           </div>
           <button type="submit">开始审查</button>
         </form>
         <div class="hint">
-          <strong>演示建议：</strong>当前页面仅保留大模型审查入口；任务提交后会持续处理，直到 LLM + OCR 完成后再展示结果。
+          <strong>演示建议：</strong>当前页面仅保留大模型审查入口；提交后会持续等待，直到 LLM + OCR 完成后再展示结果。
         </div>
       </section>
       <section class="panel">
-        <h2>最近案件</h2>
+        <div class="runs-head">
+          <h2>最近案件</h2>
+          <span class="badge">最近运行</span>
+        </div>
+        <p class="runs-note">这里会展示最近案件的处理状态，方便直接查看正在等待的任务和已经完成的报告。</p>
         {% if runs %}
         <table>
           <thead>
             <tr>
               <th>案件</th>
               <th>状态</th>
-              <th>模式</th>
               <th>生成时间</th>
             </tr>
           </thead>
@@ -227,8 +305,7 @@ INDEX_TEMPLATE = """<!doctype html>
             {% for run in runs %}
             <tr>
               <td><a href="{{ url_for('run_detail', run_id=run.run_id) }}">{{ run.run_id }}</a></td>
-              <td class="state-{{ run.state }}">{{ run.state }}</td>
-              <td>{{ run.mode }}</td>
+              <td class="state-{{ run.state }}">{{ run.state_label }}</td>
               <td>{{ run.generated_at }}</td>
             </tr>
             {% endfor %}
@@ -251,30 +328,52 @@ RUN_TEMPLATE = """<!doctype html>
   <title>{{ run_id }} - agent_bid_rigging</title>
   <style>
     :root {
-      --bg: #f4efe6;
-      --panel: #fffdfa;
-      --ink: #1f2a33;
-      --muted: #68727d;
-      --line: #d9cdbd;
-      --accent: #7c3f00;
-      --ok: #256d1b;
-      --warn: #8f5d00;
-      --bad: #9a1f1f;
+      --bg: #f5f7ff;
+      --panel: rgba(255, 255, 255, 0.84);
+      --ink: #182033;
+      --muted: #5c6880;
+      --line: rgba(108, 123, 168, 0.22);
+      --accent: #205cff;
+      --accent-2: #8a3ffc;
+      --ok: #18864b;
+      --warn: #a56400;
+      --bad: #c23552;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: "Noto Serif SC", "Songti SC", serif; background: var(--bg); color: var(--ink); }
-    main { width: min(1120px, calc(100vw - 48px)); margin: 28px auto 40px; display: grid; gap: 18px; }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "PingFang SC", "Helvetica Neue", sans-serif;
+      background:
+        radial-gradient(circle at 8% 12%, rgba(99, 102, 241, 0.22) 0, rgba(99, 102, 241, 0) 28%),
+        radial-gradient(circle at 84% 12%, rgba(17, 184, 178, 0.16) 0, rgba(17, 184, 178, 0) 26%),
+        linear-gradient(180deg, #f7f9ff 0%, #eef3ff 100%);
+      color: var(--ink);
+    }
+    main { width: min(1180px, calc(100vw - 40px)); margin: 24px auto 40px; display: grid; gap: 18px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 26px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 24px 80px rgba(41, 57, 97, 0.14);
+    }
     h1, h2, h3 { margin: 0 0 12px; }
     .muted { color: var(--muted); }
     .meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-    .meta div { padding: 12px; border-radius: 12px; background: #faf5ee; border: 1px solid var(--line); }
+    .meta div {
+      padding: 14px 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+    }
     .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
     .dimension-summary {
       margin-top: 16px;
       padding: 16px 18px;
-      border-radius: 16px;
-      background: #faf5ee;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.8);
       border: 1px solid var(--line);
       display: grid;
       gap: 10px;
@@ -299,27 +398,27 @@ RUN_TEMPLATE = """<!doctype html>
       border: 1px solid transparent;
     }
     .dimension-chip.strong {
-      background: #f6dfdf;
-      color: #8b1f1f;
-      border-color: #e5b9b9;
+      background: rgba(194, 53, 82, 0.1);
+      color: #a02248;
+      border-color: rgba(194, 53, 82, 0.16);
     }
     .dimension-chip.medium {
-      background: #f8edd8;
-      color: #8f5d00;
-      border-color: #e8d2a6;
+      background: rgba(247, 173, 44, 0.12);
+      color: #a56400;
+      border-color: rgba(247, 173, 44, 0.22);
     }
     .dimension-chip.weak {
-      background: #e7efe1;
-      color: #256d1b;
-      border-color: #c6dbbb;
+      background: rgba(24, 134, 75, 0.1);
+      color: #18864b;
+      border-color: rgba(24, 134, 75, 0.18);
     }
     a.button {
       display: grid;
       gap: 6px;
       text-decoration: none;
       padding: 16px 18px;
-      border-radius: 18px;
-      background: #fffaf4;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.78);
       border: 1px solid var(--line);
       color: var(--accent);
       font-weight: 600;
@@ -327,16 +426,16 @@ RUN_TEMPLATE = """<!doctype html>
       align-content: center;
     }
     a.button.active {
-      background: linear-gradient(180deg, #975200 0%, #7c3f00 100%);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
       color: white;
-      box-shadow: 0 12px 28px rgba(124, 63, 0, 0.22);
+      box-shadow: 0 16px 32px rgba(74, 81, 228, 0.24);
       border: 0;
     }
     a.button.active span { color: rgba(255,255,255,0.82); }
     a.button strong { font-size: 20px; }
-    a.button span { font-size: 13px; color: color-mix(in srgb, var(--accent) 82%, white); }
+    a.button span { font-size: 13px; color: color-mix(in srgb, var(--accent) 80%, white); }
     a.secondary {
-      background: #fffaf4;
+      background: rgba(255,255,255,0.78);
       border: 1px solid var(--line);
       color: var(--accent);
     }
@@ -355,10 +454,10 @@ RUN_TEMPLATE = """<!doctype html>
       max-width: 900px;
       margin: 0 auto;
       padding: 44px 58px 52px;
-      border-radius: 18px;
+      border-radius: 30px;
       background: #ffffff;
-      border: 1px solid #d8cbb8;
-      box-shadow: 0 12px 24px rgba(69, 49, 23, 0.06);
+      border: 1px solid rgba(118, 133, 180, 0.18);
+      box-shadow: 0 22px 44px rgba(41, 57, 97, 0.1);
       line-height: 1.75;
       font-size: 17px;
     }
@@ -497,15 +596,15 @@ RUN_TEMPLATE = """<!doctype html>
       display: grid;
       gap: 14px;
       padding: 22px;
-      border-radius: 18px;
-      background: linear-gradient(180deg, #fff6ec 0%, #f8ead9 100%);
+      border-radius: 26px;
+      background: linear-gradient(135deg, rgba(32, 92, 255, 0.08) 0%, rgba(138, 63, 252, 0.1) 100%);
       border: 1px solid var(--line);
     }
     .spinner {
       width: 34px;
       height: 34px;
       border-radius: 999px;
-      border: 3px solid rgba(124, 63, 0, 0.18);
+      border: 3px solid rgba(32, 92, 255, 0.18);
       border-top-color: var(--accent);
       animation: spin 0.9s linear infinite;
     }
@@ -517,7 +616,7 @@ RUN_TEMPLATE = """<!doctype html>
     .state-running, .state-queued { color: var(--warn); }
     .state-failed { color: var(--bad); }
     @media (max-width: 900px) {
-      main { width: min(100vw - 24px, 1120px); }
+      main { width: min(100vw - 20px, 1120px); }
       .meta, .links { grid-template-columns: 1fr; }
       .report-viewer {
         padding: 28px 22px 32px;
@@ -539,7 +638,7 @@ RUN_TEMPLATE = """<!doctype html>
       <h1>{{ run_id }}</h1>
       <p class="muted">状态会自动刷新。当前页面默认展示大模型审查任务，并持续等待直到 LLM + OCR 报告处理完成。</p>
       <div class="meta">
-        <div><strong>当前状态</strong><br><span class="state-{{ status.state }}">{{ status.state }}</span></div>
+        <div><strong>当前状态</strong><br><span class="state-{{ status.state }}">{{ status_label }}</span></div>
         <div><strong>审查模式</strong><br>{{ mode_label }}</div>
         <div><strong>生成时间</strong><br>{{ status.generated_at or job.generated_at or '-' }}</div>
       </div>
@@ -599,10 +698,19 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
     app.config["DEMO_BASE_DIR"] = root
     app.config["DEMO_UPLOADS_DIR"] = uploads_dir
     app.config["DEMO_RUNS_DIR"] = runs_dir
+    app.config["ACTIVE_WEB_RUNS"] = set()
+    app.config["WEB_RUN_STALE_SECONDS"] = int(os.getenv("AGENT_BID_RIGGING_WEB_STALE_SECONDS", "180"))
 
     @app.get("/")
     def index() -> str:
-        return render_template_string(INDEX_TEMPLATE, runs=_list_runs(runs_dir))
+        return render_template_string(
+            INDEX_TEMPLATE,
+            runs=_list_runs(
+                runs_dir,
+                active_run_ids=app.config["ACTIVE_WEB_RUNS"],
+                stale_after_seconds=app.config["WEB_RUN_STALE_SECONDS"],
+            ),
+        )
 
     @app.post("/runs")
     def create_run() -> Any:
@@ -657,6 +765,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
                 "opinion_mode": opinion_mode,
                 "enable_ocr": enable_ocr,
                 "review_mode": review_mode,
+                "active_run_ids": app.config["ACTIVE_WEB_RUNS"],
             },
             daemon=True,
         )
@@ -668,13 +777,10 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         run_dir = runs_dir / run_id
         if not run_dir.exists():
             abort(404)
-        job = _read_json(run_dir / "web_job.json", default={"state": "unknown"})
-        status = _read_json(
-            run_dir / "llm_status.json",
-            default={
-                "state": job.get("state", "queued"),
-                "requested_mode": job.get("opinion_mode", "template"),
-            },
+        job, status = _load_run_state(
+            run_dir,
+            active_run_ids=app.config["ACTIVE_WEB_RUNS"],
+            stale_after_seconds=app.config["WEB_RUN_STALE_SECONDS"],
         )
         if job.get("state") in {"queued", "running", "failed"} and status.get("state") == "not-requested":
             status["state"] = job.get("state")
@@ -694,6 +800,7 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
             run_id=run_id,
             job=job,
             status=status,
+            status_label=_status_label(status.get("state") or job.get("state")),
             mode_label=_review_mode_label(job.get("review_mode")),
             status_json=json.dumps(status, ensure_ascii=False, indent=2),
             report_links=_report_links(run_id, run_dir, selected_report) if not waiting_for_llm_result else [],
@@ -710,8 +817,11 @@ def create_app(base_dir: str | Path | None = None) -> Flask:
         run_dir = runs_dir / run_id
         if not run_dir.exists():
             abort(404)
-        job = _read_json(run_dir / "web_job.json", default={})
-        status = _read_json(run_dir / "llm_status.json", default={})
+        job, status = _load_run_state(
+            run_dir,
+            active_run_ids=app.config["ACTIVE_WEB_RUNS"],
+            stale_after_seconds=app.config["WEB_RUN_STALE_SECONDS"],
+        )
         return jsonify(
             {
                 "run_id": run_id,
@@ -753,7 +863,10 @@ def _execute_run(
     opinion_mode: str,
     enable_ocr: bool,
     review_mode: str,
+    active_run_ids: set[str] | None = None,
 ) -> None:
+    if active_run_ids is not None:
+        active_run_ids.add(run_id)
     _write_json(
         run_dir / "web_job.json",
         {
@@ -804,20 +917,26 @@ def _execute_run(
                 "error": str(exc),
             },
         )
+    finally:
+        if active_run_ids is not None:
+            active_run_ids.discard(run_id)
 
 
-def _list_runs(runs_dir: Path) -> list[dict[str, str]]:
+def _list_runs(runs_dir: Path, active_run_ids: set[str], stale_after_seconds: int) -> list[dict[str, str]]:
     runs: list[dict[str, str]] = []
     for item in sorted(runs_dir.iterdir(), reverse=True):
         if not item.is_dir():
             continue
-        job = _read_json(item / "web_job.json", default={})
-        status = _read_json(item / "llm_status.json", default={})
+        job, status = _load_run_state(
+            item,
+            active_run_ids=active_run_ids,
+            stale_after_seconds=stale_after_seconds,
+        )
         runs.append(
             {
                 "run_id": item.name,
                 "state": status.get("state") or job.get("state", "unknown"),
-                "mode": _review_mode_label(job.get("review_mode")),
+                "state_label": _status_label(status.get("state") or job.get("state", "unknown")),
                 "generated_at": status.get("generated_at") or job.get("generated_at", "-"),
             }
         )
@@ -860,6 +979,63 @@ def _safe_upload_filename(raw: str) -> str:
     normalized = re.sub(r"[^\w\u4e00-\u9fff.\-()（）]+", "_", normalized)
     normalized = normalized.strip("._-")
     return normalized or "upload.bin"
+
+
+def _load_run_state(run_dir: Path, active_run_ids: set[str], stale_after_seconds: int) -> tuple[dict[str, Any], dict[str, Any]]:
+    job = _read_json(run_dir / "web_job.json", default={"state": "unknown"})
+    status = _read_json(
+        run_dir / "llm_status.json",
+        default={
+            "state": job.get("state", "queued"),
+            "requested_mode": job.get("opinion_mode", "template"),
+        },
+    )
+    return _mark_stale_run_failed(run_dir, job, status, active_run_ids, stale_after_seconds)
+
+
+def _mark_stale_run_failed(
+    run_dir: Path,
+    job: dict[str, Any],
+    status: dict[str, Any],
+    active_run_ids: set[str],
+    stale_after_seconds: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    run_id = job.get("run_id") or run_dir.name
+    if run_id in active_run_ids:
+        return job, status
+    if job.get("state") not in {"queued", "running"} and status.get("state") not in {"queued", "running"}:
+        return job, status
+
+    generated_at = job.get("generated_at") or status.get("generated_at")
+    if not generated_at:
+        return job, status
+    try:
+        generated_at_dt = datetime.fromisoformat(generated_at)
+    except ValueError:
+        return job, status
+    age_seconds = (datetime.now() - generated_at_dt).total_seconds()
+    if age_seconds < stale_after_seconds:
+        return job, status
+
+    error = "Web 服务重启或后台任务中断，旧运行任务已自动标记为失败。"
+    failed_at = datetime.now().isoformat(timespec="seconds")
+    failed_job = {
+        **job,
+        "run_id": run_id,
+        "state": "failed",
+        "generated_at": failed_at,
+        "error": error,
+    }
+    failed_status = {
+        **status,
+        "requested_mode": status.get("requested_mode") or job.get("opinion_mode", "template"),
+        "state": "failed",
+        "generated_at": failed_at,
+        "error": error,
+    }
+    _write_json(run_dir / "web_job.json", failed_job)
+    _write_json(run_dir / "llm_status.json", failed_status)
+    return failed_job, failed_status
 
 
 def _unique_upload_path(target_dir: Path, filename: str) -> Path:
@@ -962,6 +1138,16 @@ def _should_wait_for_llm_result(job: dict[str, Any], status: dict[str, Any], run
     if status.get("state") != "completed":
         return True
     return not (run_dir / "formal_report.llm.md").exists()
+
+
+def _status_label(state: str | None) -> str:
+    mapping = {
+        "completed": "完成",
+        "failed": "失败",
+        "running": "处理中",
+        "queued": "排队中",
+    }
+    return mapping.get((state or "").lower(), state or "-")
 
 
 def _resolve_review_mode(review_mode: str) -> tuple[str, bool]:

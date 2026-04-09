@@ -21,10 +21,12 @@ def test_web_index_loads(tmp_path: Path) -> None:
 
     body = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert "围串标审查演示台" in body
+    assert "围串标审查" in body
+    assert "围串标审查工作台" in body
     assert "规则审查" not in body
     assert "审查模式" not in body
     assert "供应商名称（可选）" not in body
+    assert "<th>模式</th>" not in body
 
 
 def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
@@ -39,6 +41,7 @@ def test_web_create_run_starts_review(monkeypatch, tmp_path: Path) -> None:
         opinion_mode: str,
         enable_ocr: bool,
         review_mode: str,
+        active_run_ids: set[str] | None = None,
     ) -> None:
         (run_dir / "formal_report.md").write_text("# report", encoding="utf-8")
         (run_dir / "opinion.md").write_text("# opinion", encoding="utf-8")
@@ -190,6 +193,77 @@ def test_run_detail_only_shows_llm_report_when_completed(tmp_path: Path) -> None
     assert "报价关联中" in body
     assert "文本与方案关联未命中" not in body
     assert "导出当前报告" not in body
+
+
+def test_stale_running_run_is_marked_failed_on_read(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    app.config["WEB_RUN_STALE_SECONDS"] = 1
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "stale_case"
+    run_dir.mkdir(parents=True)
+    old_time = "2026-03-20T10:00:00"
+    (run_dir / "web_job.json").write_text(
+        json.dumps(
+            {
+                "run_id": "stale_case",
+                "state": "running",
+                "generated_at": old_time,
+                "review_mode": "llm_ocr",
+                "opinion_mode": "llm",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "llm_status.json").write_text(
+        json.dumps({"requested_mode": "llm", "state": "running"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/runs/stale_case")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["job"]["state"] == "failed"
+    assert payload["llm_status"]["state"] == "failed"
+    assert "自动标记为失败" in payload["job"]["error"]
+
+
+def test_index_uses_chinese_status_labels(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    client = app.test_client()
+    run_dir = tmp_path / "runs" / "done_case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "web_job.json").write_text(
+        json.dumps(
+            {
+                "run_id": "done_case",
+                "state": "completed",
+                "generated_at": "2026-04-09T12:02:30",
+                "review_mode": "llm_ocr",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "llm_status.json").write_text(
+        json.dumps(
+            {
+                "requested_mode": "llm",
+                "state": "completed",
+                "generated_at": "2026-04-09T12:02:30",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.get("/")
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "完成" in body
+    assert ">完成<" in body
 
 
 def test_artifact_download_supports_export(tmp_path: Path) -> None:
